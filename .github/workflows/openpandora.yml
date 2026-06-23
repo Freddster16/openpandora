@@ -32,16 +32,34 @@ jobs:
 
       - name: Run local QA check
         id: qa
-        continue-on-error: true
-        run: openpandora check --since main
+        run: |
+          set +e
+          openpandora check --since main
+          exit_code="$?"
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          if [ "$exit_code" -ne 0 ]; then
+            echo "needs_fix=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_fix=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Run configured project commands
         id: project_commands
-        continue-on-error: true
-        run: openpandora test
+        run: |
+          set +e
+          openpandora test
+          exit_code="$?"
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          if [ "$exit_code" -ne 0 ]; then
+            echo "needs_fix=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_fix=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Open fix pull request
-        if: steps.qa.outcome == 'failure' || steps.project_commands.outcome == 'failure'
+        if: |
+          (steps.qa.outputs.needs_fix == 'true' || steps.project_commands.outputs.needs_fix == 'true') &&
+          (vars.OPENPANDORA_PROVIDER != '' || vars.OPENPANDORA_LOCAL_COMMAND != '')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENPANDORA_PROVIDER: ${{ vars.OPENPANDORA_PROVIDER }}
@@ -51,5 +69,5 @@ jobs:
         run: openpandora fix-pr --since main --create
 
       - name: Fail original branch check
-        if: steps.qa.outcome == 'failure' || steps.project_commands.outcome == 'failure'
+        if: steps.qa.outputs.needs_fix == 'true' || steps.project_commands.outputs.needs_fix == 'true'
         run: exit 1
