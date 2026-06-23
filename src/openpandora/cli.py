@@ -4,15 +4,46 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
+from pathlib import Path
 
 from openpandora import __version__
+from openpandora.checks import run_local_checks
+from openpandora.git_context import GitCommandError, collect_repo_context
+from openpandora.learned_rules import LearnedRulesError, load_learned_rules
 
 
-def run_check() -> int:
+def run_check(repo_path: str | Path = ".") -> int:
     """Run local QA feedback before a user pushes code."""
-    print("OpenPandora is ready.")
-    print("No QA checks are connected yet. Next, this command will inspect your repo.")
-    return 0
+    try:
+        context = collect_repo_context(repo_path)
+        learned_rules = load_learned_rules(repo_path)
+    except (GitCommandError, LearnedRulesError) as error:
+        print("OpenPandora could not check this project.")
+        print(str(error))
+        return 1
+
+    findings = run_local_checks(context)
+
+    print("OpenPandora check")
+    print(f"Branch: {context.branch_name}")
+    print(f"Commit: {context.current_commit[:12]}")
+    print(f"Changed files: {len(context.changed_files)}")
+    if learned_rules:
+        print(f"Loaded learned rules: {len(learned_rules)}")
+
+    if not findings:
+        print("No issues found.")
+        return 0
+
+    print(f"Found {len(findings)} issue(s):")
+    for finding in findings:
+        location = f" ({finding.location})" if finding.location else ""
+        print(f"- [{finding.severity}] {finding.title}{location}")
+        print(f"  {finding.message}")
+        if finding.suggestion:
+            print(f"  Suggestion: {finding.suggestion}")
+
+    return 1
 
 
 def build_parser() -> argparse.ArgumentParser:
