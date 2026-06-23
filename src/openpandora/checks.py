@@ -32,67 +32,84 @@ def _check_missing_tests(context: RepoContext) -> tuple[Finding, ...]:
     source_changes = tuple(
         file_path for file_path in context.changed_files if file_path.startswith("src/")
     )
-    test_changes = tuple(
-        file_path
-        for file_path in context.changed_files
-        if file_path.startswith("tests/")
-    )
+    findings = []
+    changed_files = set(context.changed_files)
 
-    if not source_changes or test_changes:
-        return ()
+    for source_file in source_changes:
+        expected_tests = _expected_test_files(source_file)
+        if changed_files.intersection(expected_tests):
+            continue
 
-    changed_files = ", ".join(source_changes)
-    return (
-        Finding(
-            title="Add a focused test",
-            message=(
-                "Source code changed, but this commit does not include a matching "
-                "test change."
-            ),
-            severity=Severity.WARNING,
-            suggestion=f"Add or update a pytest test for: {changed_files}",
-        ),
+        findings.append(
+            Finding(
+                title="Add a focused test",
+                message=(
+                    f"{source_file} changed, but this commit does not include a "
+                    "likely matching test change."
+                ),
+                severity=Severity.WARNING,
+                file_path=source_file,
+                suggestion=(
+                    "Add or update one of these pytest files: "
+                    f"{', '.join(expected_tests)}"
+                ),
+            )
+        )
+
+    return tuple(findings)
+
+
+def _expected_test_files(source_file: str) -> tuple[str, ...]:
+    source_path = Path(source_file)
+    relative_path = Path(*source_path.parts[1:])
+    module_parts = relative_path.with_suffix("").parts
+    module_name = "_".join(part for part in module_parts if part != "__init__")
+    if not module_name:
+        module_name = source_path.parent.name
+
+    leaf_name = relative_path.stem
+    if leaf_name == "__init__":
+        leaf_name = source_path.parent.name
+
+    candidates = (
+        f"tests/test_{leaf_name}.py",
+        str(Path("tests") / relative_path.parent / f"test_{leaf_name}.py"),
+        f"tests/test_{module_name}.py",
     )
+    return tuple(dict.fromkeys(candidates))
 
 
 def _check_secret_like_strings(
     context: RepoContext, repo_path: Path
 ) -> tuple[Finding, ...]:
+    _ = repo_path
     findings: list[Finding] = []
-    for changed_file in context.changed_files:
-        file_path = repo_path / changed_file
-        text = _read_text_file(file_path)
-        if text is None:
+    files_with_findings: set[str] = set()
+
+    for changed_line in context.changed_lines:
+        if changed_line.file_path in files_with_findings:
             continue
 
-        for line_number, line in enumerate(text.splitlines(), start=1):
-            if _looks_like_secret(line):
-                findings.append(
-                    Finding(
-                        title="Possible secret in code",
-                        message=(
-                            "This line looks like it may contain an API key, token, "
-                            "password, or secret."
-                        ),
-                        severity=Severity.ERROR,
-                        file_path=changed_file,
-                        line_number=line_number,
-                        suggestion=(
-                            "Remove the secret from the code and load it from an "
-                            "environment variable instead."
-                        ),
-                    )
+        if _looks_like_secret(changed_line.content):
+            findings.append(
+                Finding(
+                    title="Possible secret in code",
+                    message=(
+                        "This added line looks like it may contain an API key, token, "
+                        "password, or secret."
+                    ),
+                    severity=Severity.ERROR,
+                    file_path=changed_line.file_path,
+                    line_number=changed_line.line_number,
+                    suggestion=(
+                        "Remove the secret from the code and load it from an "
+                        "environment variable instead."
+                    ),
                 )
-                break
+            )
+            files_with_findings.add(changed_line.file_path)
 
     return tuple(findings)
-
-
-def _read_text_file(file_path: Path) -> str | None:
-    try:
-        return file_path.read_text()
-    except (OSError, UnicodeDecodeError):
-        return None
 
 
 def _looks_like_secret(line: str) -> bool:

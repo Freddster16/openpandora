@@ -2,7 +2,7 @@ import subprocess
 
 import pytest
 
-from openpandora.git_context import GitCommandError, collect_repo_context
+from openpandora.git_context import ChangedLine, GitCommandError, collect_repo_context
 
 
 def test_collect_repo_context_reads_branch_commit_and_changed_files(monkeypatch):
@@ -17,6 +17,17 @@ def test_collect_repo_context_reads_branch_commit_and_changed_files(monkeypatch)
             "-r",
             "HEAD",
         ): "src/openpandora/cli.py\ntests/test_cli.py\n",
+        (
+            "show",
+            "--format=",
+            "--unified=0",
+            "HEAD",
+        ): (
+            "diff --git a/src/openpandora/cli.py b/src/openpandora/cli.py\n"
+            "+++ b/src/openpandora/cli.py\n"
+            "@@ -0,0 +1 @@\n"
+            "+print('hello')\n"
+        ),
     }
 
     def fake_run(command, cwd, text, capture_output, check):
@@ -41,6 +52,13 @@ def test_collect_repo_context_reads_branch_commit_and_changed_files(monkeypatch)
     assert context.changed_files == (
         "src/openpandora/cli.py",
         "tests/test_cli.py",
+    )
+    assert context.changed_lines == (
+        ChangedLine(
+            file_path="src/openpandora/cli.py",
+            line_number=1,
+            content="print('hello')",
+        ),
     )
 
 
@@ -70,6 +88,9 @@ def test_collect_repo_context_reads_a_real_initial_commit(tmp_path):
     assert context.branch_name == "main"
     assert context.current_commit == _git(tmp_path, "rev-parse", "HEAD")
     assert context.changed_files == ("README.md",)
+    assert context.changed_lines == (
+        ChangedLine(file_path="README.md", line_number=1, content="# demo"),
+    )
 
 
 def test_collect_repo_context_reads_only_the_latest_real_commit(tmp_path):
@@ -90,6 +111,41 @@ def test_collect_repo_context_reads_only_the_latest_real_commit(tmp_path):
     assert context.branch_name == "main"
     assert context.current_commit == _git(tmp_path, "rev-parse", "HEAD")
     assert set(context.changed_files) == {"README.md", "src/demo.py"}
+    assert (
+        ChangedLine(file_path="README.md", line_number=3, content="More notes.")
+        in context.changed_lines
+    )
+    assert (
+        ChangedLine(file_path="src/demo.py", line_number=1, content="print('hello')")
+        in context.changed_lines
+    )
+
+
+def test_collect_repo_context_can_compare_against_a_base_ref(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "README.md").write_text("# demo\n")
+    _git(tmp_path, "add", "README.md")
+    _git(tmp_path, "commit", "-m", "docs: add readme")
+
+    _git(tmp_path, "checkout", "-b", "feature/demo")
+    source_path = tmp_path / "src" / "demo.py"
+    source_path.parent.mkdir()
+    source_path.write_text("print('hello')\n")
+    _git(tmp_path, "add", "src/demo.py")
+    _git(tmp_path, "commit", "-m", "feat: add demo file")
+
+    context = collect_repo_context(tmp_path, since_ref="main")
+
+    assert context.branch_name == "feature/demo"
+    assert context.base_ref == "main"
+    assert context.changed_files == ("src/demo.py",)
+    assert context.changed_lines == (
+        ChangedLine(
+            file_path="src/demo.py",
+            line_number=1,
+            content="print('hello')",
+        ),
+    )
 
 
 def _init_repo(repo_path):

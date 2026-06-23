@@ -74,11 +74,24 @@ For scripts and automation, use JSON output:
 openpandora check --json
 ```
 
+To compare a branch against another ref, such as `main`, run:
+
+```bash
+openpandora check --since main
+```
+
+To prepare a GitHub-ready QA summary without opening a pull request:
+
+```bash
+openpandora pr-body --since main
+```
+
 The JSON output includes:
 
 - status
 - branch
 - commit
+- base ref, when `--since` is used
 - changed files
 - learned rules
 - findings
@@ -88,7 +101,8 @@ The JSON output includes:
 OpenPandora currently checks for:
 
 - source changes under `src/` without a matching change under `tests/`
-- secret-looking strings, including API keys, tokens, passwords, and secrets
+- secret-looking strings in added lines, including API keys, tokens, passwords,
+  and secrets
 
 The checks are intentionally simple and local. They are meant to catch obvious
 mistakes while staying understandable for new developers.
@@ -119,6 +133,12 @@ Today, learned rules are loaded and shown in `openpandora check` output. They
 are not auto-applied or silently enforced. This keeps the user in control while
 the learning system grows.
 
+To create a starter rules file:
+
+```bash
+openpandora init
+```
+
 ## Provider Setup
 
 OpenPandora is designed so users can choose an AI provider later. The current
@@ -136,6 +156,12 @@ Current provider options:
 
 The command checks whether an environment variable exists, but it never prints
 the secret value.
+
+To save a provider choice without storing any API keys:
+
+```bash
+openpandora providers select openai
+```
 
 ## GitHub Action
 
@@ -175,6 +201,8 @@ ruff format .
 - `src/openpandora/findings.py` defines QA result objects.
 - `src/openpandora/learned_rules.py` loads readable user-controlled rules.
 - `src/openpandora/providers.py` describes provider auth options.
+- `src/openpandora/project_init.py` creates starter project config files.
+- `src/openpandora/pull_requests.py` prepares GitHub-ready QA text.
 - `tests/` mirrors the source files with focused pytest coverage.
 
 ## Roadmap

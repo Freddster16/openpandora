@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
+
+CONFIG_FILE = Path(".openpandora") / "config.json"
 
 
 class Provider(StrEnum):
@@ -34,6 +38,14 @@ class ProviderSetup:
     env_var: str | None
     configured: bool
     note: str
+
+
+@dataclass(frozen=True)
+class ProviderConfig:
+    """Describe the selected provider without storing secrets."""
+
+    provider: Provider
+    config_path: Path
 
 
 def list_provider_setups(
@@ -67,6 +79,25 @@ def list_provider_setups(
             environment=current_environment,
         ),
     )
+
+
+def select_provider(provider_name: str, repo_path: str | Path = ".") -> ProviderConfig:
+    """Store the user's provider choice without storing API keys."""
+    provider = Provider(provider_name)
+    config_path = Path(repo_path) / CONFIG_FILE
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps({"provider": provider.value}, indent=2) + "\n")
+    return ProviderConfig(provider=provider, config_path=config_path)
+
+
+def load_selected_provider(repo_path: str | Path = ".") -> ProviderConfig | None:
+    """Load the selected provider when the project has one."""
+    config_path = Path(repo_path) / CONFIG_FILE
+    if not config_path.exists():
+        return None
+
+    data = json.loads(config_path.read_text())
+    return ProviderConfig(provider=Provider(data["provider"]), config_path=config_path)
 
 
 def _provider_setup(
