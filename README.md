@@ -338,9 +338,9 @@ It currently:
 - checks out the code
 - installs Python 3.11
 - installs OpenPandora with development tools
-- runs `openpandora check --since main`
+- runs `openpandora check --since origin/main`
 - runs `openpandora test`
-- tries `openpandora fix-pr --since main --create` if either command fails
+- tries `openpandora fix-pr --since origin/main --create` if either command fails
 
 The fix PR step needs `GITHUB_TOKEN` plus a configured provider key, such as
 `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. It also needs

@@ -9,4 +9,5 @@ def test_openpandora_workflow_gates_fix_pr_on_step_outputs():
     assert "steps.qa.outputs.needs_fix == 'true'" in workflow
     assert "steps.project_commands.outputs.needs_fix == 'true'" in workflow
     assert "vars.OPENPANDORA_PROVIDER != ''" in workflow
-    assert "openpandora fix-pr --since main --create" in workflow
+    assert "openpandora check --since origin/main" in workflow
+    assert "openpandora fix-pr --since origin/main --create" in workflow

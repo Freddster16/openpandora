@@ -34,7 +34,7 @@ jobs:
         id: qa
         run: |
           set +e
-          openpandora check --since main
+          openpandora check --since origin/main
           exit_code="$?"
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
           if [ "$exit_code" -ne 0 ]; then
@@ -57,17 +57,15 @@ jobs:
           fi
 
       - name: Open fix pull request
-        if: |
-          (steps.qa.outputs.needs_fix == 'true' || steps.project_commands.outputs.needs_fix == 'true') &&
-          (vars.OPENPANDORA_PROVIDER != '' || vars.OPENPANDORA_LOCAL_COMMAND != '')
+        if: ${{ (steps.qa.outputs.needs_fix == 'true' || steps.project_commands.outputs.needs_fix == 'true') && (vars.OPENPANDORA_PROVIDER != '' || vars.OPENPANDORA_LOCAL_COMMAND != '') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENPANDORA_PROVIDER: ${{ vars.OPENPANDORA_PROVIDER }}
           OPENPANDORA_LOCAL_COMMAND: ${{ vars.OPENPANDORA_LOCAL_COMMAND }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: openpandora fix-pr --since main --create
+        run: openpandora fix-pr --since origin/main --create
 
       - name: Fail original branch check
-        if: steps.qa.outputs.needs_fix == 'true' || steps.project_commands.outputs.needs_fix == 'true'
+        if: ${{ steps.qa.outputs.needs_fix == 'true' || steps.project_commands.outputs.needs_fix == 'true' }}
         run: exit 1
