@@ -14,7 +14,7 @@ def test_check_command_reports_no_issues(monkeypatch, capsys):
     )
     monkeypatch.setattr(cli, "collect_repo_context", lambda repo_path=".": context)
     monkeypatch.setattr(cli, "load_learned_rules", lambda repo_path=".": ())
-    monkeypatch.setattr(cli, "run_local_checks", lambda repo_context: ())
+    monkeypatch.setattr(cli, "run_local_checks", lambda repo_context, repo_path=".": ())
 
     assert main(["check"]) == 0
 
@@ -42,7 +42,9 @@ def test_check_command_reports_findings(monkeypatch, capsys):
     )
     monkeypatch.setattr(cli, "collect_repo_context", lambda repo_path=".": context)
     monkeypatch.setattr(cli, "load_learned_rules", lambda repo_path=".": ())
-    monkeypatch.setattr(cli, "run_local_checks", lambda repo_context: (finding,))
+    monkeypatch.setattr(
+        cli, "run_local_checks", lambda repo_context, repo_path=".": (finding,)
+    )
 
     assert main(["check"]) == 1
 

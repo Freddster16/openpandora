@@ -21,7 +21,7 @@ def run_check(repo_path: str | Path = ".") -> int:
         _print_check_error(error)
         return 1
 
-    findings = run_local_checks(context)
+    findings = run_local_checks(context, repo_path)
 
     print("OpenPandora check")
     print(f"Branch: {context.branch_name}")
