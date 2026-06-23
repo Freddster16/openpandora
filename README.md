@@ -1,6 +1,6 @@
 # OpenPandora
 
-OpenPandora is a beginner-friendly QA agent for code commits.
+OpenPandora is a beginner-friendly QA agent for code changes.
 
 It gives calm, readable feedback before code is pushed, and it is being built
 toward a GitHub workflow that can review a pushed commit and open a pull request

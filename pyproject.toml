@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "openpandora"
 version = "0.1.0"
-description = "A beginner-friendly QA agent for code commits."
+description = "A beginner-friendly QA agent for code changes."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
@@ -41,4 +41,3 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-
