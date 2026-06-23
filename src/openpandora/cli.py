@@ -18,8 +18,7 @@ def run_check(repo_path: str | Path = ".") -> int:
         context = collect_repo_context(repo_path)
         learned_rules = load_learned_rules(repo_path)
     except (GitCommandError, LearnedRulesError) as error:
-        print("OpenPandora could not check this project.")
-        print(str(error))
+        _print_check_error(error)
         return 1
 
     findings = run_local_checks(context)
@@ -44,6 +43,19 @@ def run_check(repo_path: str | Path = ".") -> int:
             print(f"  Suggestion: {finding.suggestion}")
 
     return 1
+
+
+def _print_check_error(error: Exception) -> None:
+    print("OpenPandora could not check this project.")
+
+    message = str(error)
+    if "not a git repository" in message.lower():
+        print("OpenPandora needs to run inside a Git project.")
+        print("Try: cd path/to/your/project")
+        print("Then run: openpandora check")
+        return
+
+    print(message)
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -1,7 +1,7 @@
 import pytest
 
 from openpandora import __version__, cli
-from openpandora.cli import main
+from openpandora.cli import main, run_check
 from openpandora.findings import Finding, Severity
 from openpandora.git_context import GitCommandError, RepoContext
 
@@ -52,9 +52,20 @@ def test_check_command_reports_findings(monkeypatch, capsys):
     assert "Suggestion: Add a pytest case for the new behavior." in output
 
 
-def test_check_command_explains_git_errors(monkeypatch, capsys):
+def test_check_command_explains_non_git_directories(tmp_path, capsys):
+    assert run_check(tmp_path) == 1
+
+    output = capsys.readouterr().out
+    assert "OpenPandora could not check this project." in output
+    assert "OpenPandora needs to run inside a Git project." in output
+    assert "Try: cd path/to/your/project" in output
+    assert "Then run: openpandora check" in output
+    assert "Git command failed" not in output
+
+
+def test_check_command_explains_other_git_errors(monkeypatch, capsys):
     def raise_git_error(repo_path="."):
-        raise GitCommandError("fatal: not a git repository")
+        raise GitCommandError("fatal: could not read HEAD")
 
     monkeypatch.setattr(cli, "collect_repo_context", raise_git_error)
 
@@ -62,7 +73,7 @@ def test_check_command_explains_git_errors(monkeypatch, capsys):
 
     output = capsys.readouterr().out
     assert "OpenPandora could not check this project." in output
-    assert "not a git repository" in output
+    assert "could not read HEAD" in output
 
 
 def test_version_flag_shows_current_version(capsys):
