@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-import json
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-CONFIG_FILE = Path(".openpandora") / "config.json"
+from openpandora.project_config import (
+    CONFIG_FILE,
+    load_project_config,
+    update_project_config,
+)
 
 
 class Provider(StrEnum):
@@ -24,7 +27,6 @@ class AuthMethod(StrEnum):
     """Name how a provider can be authenticated."""
 
     ENVIRONMENT = "environment"
-    GUIDED = "guided"
     NONE = "none"
 
 
@@ -57,17 +59,17 @@ def list_provider_setups(
         _provider_setup(
             provider=Provider.OPENAI,
             display_name="OpenAI",
-            auth_methods=(AuthMethod.ENVIRONMENT, AuthMethod.GUIDED),
+            auth_methods=(AuthMethod.ENVIRONMENT,),
             env_var="OPENAI_API_KEY",
-            note="Use an API key today; guided auth is planned.",
+            note="Use an API key from the environment.",
             environment=current_environment,
         ),
         _provider_setup(
             provider=Provider.ANTHROPIC,
             display_name="Anthropic",
-            auth_methods=(AuthMethod.ENVIRONMENT, AuthMethod.GUIDED),
+            auth_methods=(AuthMethod.ENVIRONMENT,),
             env_var="ANTHROPIC_API_KEY",
-            note="Use an API key today; guided auth is planned.",
+            note="Use an API key from the environment.",
             environment=current_environment,
         ),
         _provider_setup(
@@ -75,7 +77,7 @@ def list_provider_setups(
             display_name="Local",
             auth_methods=(AuthMethod.NONE,),
             env_var=None,
-            note="Reserved for local or self-hosted model review later.",
+            note="Set OPENPANDORA_LOCAL_COMMAND to call a local or self-hosted model.",
             environment=current_environment,
         ),
     )
@@ -85,8 +87,7 @@ def select_provider(provider_name: str, repo_path: str | Path = ".") -> Provider
     """Store the user's provider choice without storing API keys."""
     provider = Provider(provider_name)
     config_path = Path(repo_path) / CONFIG_FILE
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(json.dumps({"provider": provider.value}, indent=2) + "\n")
+    update_project_config(repo_path, provider=provider.value)
     return ProviderConfig(provider=provider, config_path=config_path)
 
 
@@ -96,8 +97,11 @@ def load_selected_provider(repo_path: str | Path = ".") -> ProviderConfig | None
     if not config_path.exists():
         return None
 
-    data = json.loads(config_path.read_text())
-    return ProviderConfig(provider=Provider(data["provider"]), config_path=config_path)
+    config = load_project_config(repo_path)
+    if config.provider is None:
+        return None
+
+    return ProviderConfig(provider=Provider(config.provider), config_path=config_path)
 
 
 def _provider_setup(

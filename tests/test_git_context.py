@@ -148,6 +148,30 @@ def test_collect_repo_context_can_compare_against_a_base_ref(tmp_path):
     )
 
 
+def test_collect_repo_context_can_include_worktree_changes(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "README.md").write_text("# demo\n")
+    _git(tmp_path, "add", "README.md")
+    _git(tmp_path, "commit", "-m", "docs: add readme")
+
+    (tmp_path / "README.md").write_text("# demo\n\nWork in progress.\n")
+    source_path = tmp_path / "src" / "demo.py"
+    source_path.parent.mkdir()
+    source_path.write_text("print('draft')\n")
+
+    context = collect_repo_context(tmp_path, include_worktree=True)
+
+    assert set(context.changed_files) == {"README.md", "src/demo.py"}
+    assert (
+        ChangedLine(file_path="README.md", line_number=3, content="Work in progress.")
+        in context.changed_lines
+    )
+    assert (
+        ChangedLine(file_path="src/demo.py", line_number=1, content="print('draft')")
+        in context.changed_lines
+    )
+
+
 def _init_repo(repo_path):
     _git(repo_path, "init")
     _git(repo_path, "branch", "-M", "main")

@@ -6,7 +6,8 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
 
 jobs:
   check:
@@ -30,5 +31,25 @@ jobs:
           python -m pip install -e ".[dev]"
 
       - name: Run local QA check
-        run: openpandora check
+        id: qa
+        continue-on-error: true
+        run: openpandora check --since main
 
+      - name: Run configured project commands
+        id: project_commands
+        continue-on-error: true
+        run: openpandora test
+
+      - name: Open fix pull request
+        if: steps.qa.outcome == 'failure' || steps.project_commands.outcome == 'failure'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENPANDORA_PROVIDER: ${{ vars.OPENPANDORA_PROVIDER }}
+          OPENPANDORA_LOCAL_COMMAND: ${{ vars.OPENPANDORA_LOCAL_COMMAND }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: openpandora fix-pr --since main --create
+
+      - name: Fail original branch check
+        if: steps.qa.outcome == 'failure' || steps.project_commands.outcome == 'failure'
+        run: exit 1

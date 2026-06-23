@@ -1,12 +1,25 @@
 import json
+from types import SimpleNamespace
 
 import pytest
 
 from openpandora import __version__, cli
 from openpandora.cli import main, run_check
+from openpandora.command_runner import CommandResult
 from openpandora.findings import Finding, Severity
 from openpandora.git_context import GitCommandError, RepoContext
+from openpandora.github_pull_requests import GitHubRepo, PullRequestResult
 from openpandora.learned_rules import LearnedRule
+from openpandora.patches import PatchResult
+from openpandora.review import ReviewRequest
+
+PATCH_TEXT = """diff --git a/demo.txt b/demo.txt
+--- a/demo.txt
++++ b/demo.txt
+@@ -1 +1 @@
+-hello
++hello world
+"""
 
 
 def test_check_command_reports_no_issues(monkeypatch, capsys):
@@ -16,7 +29,9 @@ def test_check_command_reports_no_issues(monkeypatch, capsys):
         changed_files=("src/openpandora/cli.py",),
     )
     monkeypatch.setattr(
-        cli, "collect_repo_context", lambda repo_path=".", since_ref=None: context
+        cli,
+        "collect_repo_context",
+        lambda repo_path=".", since_ref=None, include_worktree=False: context,
     )
     monkeypatch.setattr(cli, "load_learned_rules", lambda repo_path=".": ())
     monkeypatch.setattr(cli, "run_local_checks", lambda repo_context, repo_path=".": ())
@@ -40,7 +55,7 @@ def test_check_command_accepts_since_ref(monkeypatch, capsys):
         base_ref="main",
     )
 
-    def collect_context(repo_path=".", since_ref=None):
+    def collect_context(repo_path=".", since_ref=None, include_worktree=False):
         captured_since_refs.append(since_ref)
         return context
 
@@ -69,7 +84,9 @@ def test_check_command_shows_loaded_learned_rules(monkeypatch, capsys):
         ),
     )
     monkeypatch.setattr(
-        cli, "collect_repo_context", lambda repo_path=".", since_ref=None: context
+        cli,
+        "collect_repo_context",
+        lambda repo_path=".", since_ref=None, include_worktree=False: context,
     )
     monkeypatch.setattr(cli, "load_learned_rules", lambda repo_path=".": rules)
     monkeypatch.setattr(cli, "run_local_checks", lambda repo_context, repo_path=".": ())
@@ -95,7 +112,9 @@ def test_check_command_can_print_json_results(monkeypatch, capsys):
         ),
     )
     monkeypatch.setattr(
-        cli, "collect_repo_context", lambda repo_path=".", since_ref=None: context
+        cli,
+        "collect_repo_context",
+        lambda repo_path=".", since_ref=None, include_worktree=False: context,
     )
     monkeypatch.setattr(cli, "load_learned_rules", lambda repo_path=".": rules)
     monkeypatch.setattr(cli, "run_local_checks", lambda repo_context, repo_path=".": ())
@@ -127,11 +146,20 @@ def test_check_command_reports_findings(monkeypatch, capsys):
         suggestion="Add a pytest case for the new behavior.",
     )
     monkeypatch.setattr(
-        cli, "collect_repo_context", lambda repo_path=".", since_ref=None: context
+        cli,
+        "collect_repo_context",
+        lambda repo_path=".", since_ref=None, include_worktree=False: context,
     )
     monkeypatch.setattr(cli, "load_learned_rules", lambda repo_path=".": ())
     monkeypatch.setattr(
         cli, "run_local_checks", lambda repo_context, repo_path=".": (finding,)
+    )
+    monkeypatch.setattr(
+        cli,
+        "record_findings",
+        lambda repo_context, findings, repo_path=".": SimpleNamespace(
+            path=".openpandora/history.jsonl"
+        ),
     )
 
     assert main(["check"]) == 1
@@ -140,6 +168,8 @@ def test_check_command_reports_findings(monkeypatch, capsys):
     assert "Found 1 issue(s):" in output
     assert "[error] Add a test (src/openpandora/cli.py:10)" in output
     assert "Suggestion: Add a pytest case for the new behavior." in output
+    assert "Recorded this finding history" in output
+    assert "did not add or enforce any learned rule automatically" in output
 
 
 def test_check_command_can_print_json_findings(monkeypatch, capsys):
@@ -156,11 +186,20 @@ def test_check_command_can_print_json_findings(monkeypatch, capsys):
         line_number=10,
     )
     monkeypatch.setattr(
-        cli, "collect_repo_context", lambda repo_path=".", since_ref=None: context
+        cli,
+        "collect_repo_context",
+        lambda repo_path=".", since_ref=None, include_worktree=False: context,
     )
     monkeypatch.setattr(cli, "load_learned_rules", lambda repo_path=".": ())
     monkeypatch.setattr(
         cli, "run_local_checks", lambda repo_context, repo_path=".": (finding,)
+    )
+    monkeypatch.setattr(
+        cli,
+        "record_findings",
+        lambda repo_context, findings, repo_path=".": SimpleNamespace(
+            path=".openpandora/history.jsonl"
+        ),
     )
 
     assert main(["check", "--json"]) == 1
@@ -192,7 +231,7 @@ def test_check_command_can_print_json_errors(tmp_path, capsys):
 
 
 def test_check_command_explains_other_git_errors(monkeypatch, capsys):
-    def raise_git_error(repo_path=".", since_ref=None):
+    def raise_git_error(repo_path=".", since_ref=None, include_worktree=False):
         raise GitCommandError("fatal: could not read HEAD")
 
     monkeypatch.setattr(cli, "collect_repo_context", raise_git_error)
@@ -238,7 +277,9 @@ def test_init_command_creates_rules_template(tmp_path, capsys):
     output = capsys.readouterr().out
     assert "Created" in output
     assert "rules.json" in output
+    assert "config.json" in output
     assert (tmp_path / ".openpandora" / "rules.json").exists()
+    assert (tmp_path / ".openpandora" / "config.json").exists()
 
 
 def test_init_command_does_not_overwrite_existing_rules(tmp_path, capsys):
@@ -255,6 +296,75 @@ def test_init_command_does_not_overwrite_existing_rules(tmp_path, capsys):
     assert rules_path.read_text() == '{"rules": []}\n'
 
 
+def test_history_command_reports_empty_history(tmp_path, capsys):
+    assert cli.run_history(tmp_path) == 0
+
+    output = capsys.readouterr().out
+    assert "OpenPandora history" in output
+    assert "No history recorded yet." in output
+
+
+def test_history_command_shows_recent_events(tmp_path, capsys):
+    history_path = tmp_path / ".openpandora" / "history.jsonl"
+    history_path.parent.mkdir()
+    history_path.write_text(
+        '{"type": "findings", "branch": "feature/demo", '
+        '"created_at": "2026-01-01T00:00:00Z", "findings": [1]}\n'
+        '{"type": "fix", "branch": "feature/demo", '
+        '"created_at": "2026-01-02T00:00:00Z", '
+        '"pull_request_url": "https://github.com/owner/repo/pull/1"}\n'
+    )
+
+    assert cli.run_history(tmp_path) == 0
+
+    output = capsys.readouterr().out
+    assert "findings on feature/demo" in output
+    assert "Findings: 1" in output
+    assert "fix on feature/demo" in output
+    assert "https://github.com/owner/repo/pull/1" in output
+
+
+def test_test_command_runs_configured_commands(monkeypatch, capsys):
+    captured_commands = []
+
+    def fake_run_project_commands(commands, repo_path="."):
+        captured_commands.extend(commands)
+        return (
+            CommandResult("Tests", "python -m pytest", 0, "tests passed", ""),
+            CommandResult("Lint", "ruff check .", 0, "lint passed", ""),
+        )
+
+    monkeypatch.setattr(cli, "run_project_commands", fake_run_project_commands)
+
+    assert main(["test"]) == 0
+
+    output = capsys.readouterr().out
+    assert captured_commands == [
+        ("Tests", "python -m pytest"),
+        ("Lint", "ruff check ."),
+    ]
+    assert "OpenPandora project commands" in output
+    assert "All configured commands passed." in output
+    assert "tests passed" not in output
+
+
+def test_test_command_returns_failure_when_a_command_fails(monkeypatch, capsys):
+    def fake_run_project_commands(commands, repo_path="."):
+        return (
+            CommandResult("Tests", "python -m pytest", 1, "", "tests failed"),
+            CommandResult("Lint", "ruff check .", 0, "", ""),
+        )
+
+    monkeypatch.setattr(cli, "run_project_commands", fake_run_project_commands)
+
+    assert main(["test"]) == 1
+
+    output = capsys.readouterr().out
+    assert "Tests: failed with exit 1" in output
+    assert "tests failed" in output
+    assert "One or more configured commands failed." in output
+
+
 def test_providers_command_lists_auth_options(monkeypatch, capsys):
     monkeypatch.setenv("OPENAI_API_KEY", "secret-value")
 
@@ -265,7 +375,7 @@ def test_providers_command_lists_auth_options(monkeypatch, capsys):
     assert "OpenAI (openai): ready" in output
     assert "Anthropic (anthropic): needs setup" in output
     assert "API key env var: OPENAI_API_KEY" in output
-    assert "guided" in output
+    assert "environment" in output
     assert "secret-value" not in output
 
 
@@ -276,7 +386,7 @@ def test_providers_select_command_saves_choice(tmp_path, capsys):
     )
 
     output = capsys.readouterr().out
-    assert "Selected openai for future AI review." in output
+    assert "Selected openai for AI review." in output
     assert "config.json" in output
     assert "did not store any API keys" in output
     assert (tmp_path / ".openpandora" / "config.json").exists()
@@ -296,7 +406,9 @@ def test_pr_body_command_prints_summary(monkeypatch, capsys):
         changed_files=("README.md",),
     )
     monkeypatch.setattr(
-        cli, "collect_repo_context", lambda repo_path=".", since_ref=None: context
+        cli,
+        "collect_repo_context",
+        lambda repo_path=".", since_ref=None, include_worktree=False: context,
     )
     monkeypatch.setattr(cli, "load_learned_rules", lambda repo_path=".": ())
     monkeypatch.setattr(cli, "run_local_checks", lambda repo_context, repo_path=".": ())
@@ -317,7 +429,7 @@ def test_pr_body_command_accepts_since_ref(monkeypatch, capsys):
         base_ref="main",
     )
 
-    def collect_context(repo_path=".", since_ref=None):
+    def collect_context(repo_path=".", since_ref=None, include_worktree=False):
         captured_since_refs.append(since_ref)
         return context
 
@@ -330,3 +442,273 @@ def test_pr_body_command_accepts_since_ref(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert captured_since_refs == ["main"]
     assert "Compared with: `main`" in output
+
+
+def test_pr_create_command_prints_dry_run(monkeypatch, capsys):
+    context = RepoContext(
+        branch_name="feature/demo",
+        current_commit="abc123def4567890",
+        changed_files=("README.md",),
+        base_ref="main",
+    )
+    monkeypatch.setattr(
+        cli,
+        "collect_repo_context",
+        lambda repo_path=".", since_ref=None, include_worktree=False: context,
+    )
+    monkeypatch.setattr(cli, "load_learned_rules", lambda repo_path=".": ())
+    monkeypatch.setattr(cli, "run_local_checks", lambda repo_context, repo_path=".": ())
+    monkeypatch.setattr(
+        cli,
+        "detect_github_repo",
+        lambda repo_path=".": GitHubRepo("Freddster16", "openpandora"),
+    )
+
+    assert main(["pr-create", "--since", "main"]) == 0
+
+    output = capsys.readouterr().out
+    assert "OpenPandora pull request dry run" in output
+    assert "No GitHub pull request was opened." in output
+    assert "Repository: Freddster16/openpandora" in output
+    assert "Base: main" in output
+    assert "Head: feature/demo" in output
+
+
+def test_review_command_prints_review(monkeypatch, capsys):
+    captured_since_refs = []
+    request = ReviewRequest(
+        provider="local",
+        context=RepoContext(
+            branch_name="feature/demo",
+            current_commit="abc123def4567890",
+            changed_files=("README.md",),
+            base_ref="main",
+        ),
+        findings=(),
+        command_results=(
+            CommandResult("Tests", "python -m pytest", 0, "", ""),
+            CommandResult("Lint", "ruff check .", 0, "", ""),
+        ),
+    )
+
+    def fake_build_review_request(repo_path=".", since_ref=None):
+        captured_since_refs.append(since_ref)
+        return request
+
+    monkeypatch.setattr(cli, "_build_review_request", fake_build_review_request)
+    monkeypatch.setattr(cli, "_request_provider_text", lambda request: (None, None))
+
+    assert main(["review", "--since", "main"]) == 0
+
+    output = capsys.readouterr().out
+    assert captured_since_refs == ["main"]
+    assert "OpenPandora review" in output
+    assert "Provider: local" in output
+    assert "No changes suggested." in output
+
+
+def test_improve_command_prints_dry_run_plan(monkeypatch, capsys):
+    request = ReviewRequest(
+        provider="local",
+        context=RepoContext(
+            branch_name="feature/demo",
+            current_commit="abc123def4567890",
+            changed_files=("src/openpandora/cli.py",),
+        ),
+        findings=(
+            Finding(
+                title="Add a focused test",
+                message="A source file changed without a matching test.",
+                suggestion="Add tests/test_cli.py.",
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "_build_review_request",
+        lambda repo_path=".", since_ref=None: request,
+    )
+    monkeypatch.setattr(cli, "_request_provider_text", lambda request: (None, None))
+
+    assert main(["improve", "--dry-run"]) == 1
+
+    output = capsys.readouterr().out
+    assert "OpenPandora improve dry run" in output
+    assert "No files were changed." in output
+    assert "Add tests/test_cli.py." in output
+
+
+def test_improve_apply_uses_provider_patch(monkeypatch, capsys):
+    request = ReviewRequest(
+        provider="openai",
+        context=RepoContext(
+            branch_name="feature/demo",
+            current_commit="abc123def4567890",
+            changed_files=("demo.txt",),
+        ),
+        findings=(
+            Finding(
+                title="Fix demo",
+                message="Demo needs a fix.",
+            ),
+        ),
+    )
+    applied_patches = []
+
+    monkeypatch.setattr(
+        cli,
+        "_build_review_request",
+        lambda repo_path=".", since_ref=None: request,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_request_provider_fix_text",
+        lambda review_request: (f"```diff\n{PATCH_TEXT}```", None),
+    )
+    monkeypatch.setattr(
+        cli,
+        "apply_unified_diff",
+        lambda patch_text, repo_path=".": (
+            applied_patches.append(patch_text)
+            or PatchResult(applied=True, message="Patch applied.")
+        ),
+    )
+    monkeypatch.setattr(cli, "run_test", lambda repo_path=".": 0)
+
+    assert main(["improve", "--apply"]) == 0
+
+    output = capsys.readouterr().out
+    assert applied_patches == [PATCH_TEXT]
+    assert "OpenPandora patch applied." in output
+
+
+def test_fix_pr_command_prints_dry_run(monkeypatch, capsys):
+    request = ReviewRequest(
+        provider="openai",
+        context=RepoContext(
+            branch_name="feature/demo",
+            current_commit="abc123def4567890",
+            changed_files=("demo.txt",),
+        ),
+        findings=(Finding(title="Fix demo", message="Demo needs a fix."),),
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "_build_review_request",
+        lambda repo_path=".", since_ref=None: request,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_request_provider_fix_text",
+        lambda review_request: (PATCH_TEXT, None),
+    )
+    monkeypatch.setattr(cli, "has_worktree_changes", lambda repo_path=".": False)
+    monkeypatch.setattr(
+        cli,
+        "apply_unified_diff",
+        lambda patch_text, repo_path=".", check_only=False: PatchResult(
+            applied=not check_only,
+            message="Patch checked.",
+        ),
+    )
+
+    assert main(["fix-pr"]) == 0
+
+    output = capsys.readouterr().out
+    assert "OpenPandora fix PR dry run" in output
+    assert "Base branch: feature/demo" in output
+    assert "Fix branch: openpandora/fix-feature-demo" in output
+
+
+def test_fix_pr_create_pushes_branch_and_creates_pr(monkeypatch, capsys):
+    request = ReviewRequest(
+        provider="openai",
+        context=RepoContext(
+            branch_name="feature/demo",
+            current_commit="abc123def4567890",
+            changed_files=("demo.txt",),
+        ),
+        findings=(Finding(title="Fix demo", message="Demo needs a fix."),),
+    )
+    calls = []
+
+    monkeypatch.setattr(
+        cli,
+        "_build_review_request",
+        lambda repo_path=".", since_ref=None: request,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_request_provider_fix_text",
+        lambda review_request: (PATCH_TEXT, None),
+    )
+    monkeypatch.setattr(cli, "has_worktree_changes", lambda repo_path=".": False)
+    monkeypatch.setattr(
+        cli,
+        "apply_unified_diff",
+        lambda patch_text, repo_path=".", check_only=False: (
+            calls.append(("apply", check_only))
+            or PatchResult(applied=not check_only, message="Patch applied.")
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "create_fix_branch",
+        lambda branch_name, repo_path=".": (
+            calls.append(("branch", branch_name)) or branch_name
+        ),
+    )
+    monkeypatch.setattr(cli, "run_test", lambda repo_path=".": 0)
+    monkeypatch.setattr(
+        cli,
+        "commit_all_changes",
+        lambda message, repo_path=".": calls.append(("commit", message)) or "abc123",
+    )
+    monkeypatch.setattr(
+        cli,
+        "push_branch",
+        lambda branch_name, repo_path=".": calls.append(("push", branch_name)),
+    )
+    monkeypatch.setattr(
+        cli,
+        "detect_github_repo",
+        lambda repo_path=".": GitHubRepo("Freddster16", "openpandora"),
+    )
+    monkeypatch.setattr(
+        cli,
+        "create_pull_request",
+        lambda plan: (
+            calls.append(("pr", plan.head, plan.base))
+            or PullRequestResult("https://github.com/Freddster16/openpandora/pull/1")
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "record_fix",
+        lambda context, repo_path=".", **kwargs: calls.append(
+            (
+                "record_fix",
+                kwargs["fix_branch"],
+                kwargs["commit_hash"],
+                kwargs["pull_request_url"],
+            )
+        ),
+    )
+
+    assert main(["fix-pr", "--create"]) == 0
+
+    output = capsys.readouterr().out
+    assert ("apply", True) in calls
+    assert ("branch", "openpandora/fix-feature-demo") in calls
+    assert ("apply", False) in calls
+    assert ("push", "openpandora/fix-feature-demo") in calls
+    assert ("pr", "openpandora/fix-feature-demo", "feature/demo") in calls
+    assert (
+        "record_fix",
+        "openpandora/fix-feature-demo",
+        "abc123",
+        "https://github.com/Freddster16/openpandora/pull/1",
+    ) in calls
+    assert "Created fix pull request" in output

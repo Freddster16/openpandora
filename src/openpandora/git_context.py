@@ -36,7 +36,9 @@ class GitCommandError(RuntimeError):
 
 
 def collect_repo_context(
-    repo_path: str | Path = ".", since_ref: str | None = None
+    repo_path: str | Path = ".",
+    since_ref: str | None = None,
+    include_worktree: bool = False,
 ) -> RepoContext:
     """Collect branch, commit, and changed files from the current Git repo."""
     path = Path(repo_path)
@@ -44,6 +46,13 @@ def collect_repo_context(
     current_commit = _run_git(["rev-parse", "HEAD"], path)
     changed_files = _changed_files(path, since_ref)
     changed_lines = _changed_lines(path, since_ref)
+    if include_worktree:
+        changed_files = _merge_unique(changed_files, _worktree_changed_files(path))
+        changed_lines = (
+            *changed_lines,
+            *_worktree_changed_lines(path),
+            *_untracked_changed_lines(path),
+        )
 
     return RepoContext(
         branch_name=branch_name,
@@ -72,6 +81,39 @@ def _changed_lines(repo_path: Path, since_ref: str | None) -> tuple[ChangedLine,
     else:
         output = _run_git(["show", "--format=", "--unified=0", "HEAD"], repo_path)
     return _parse_changed_lines(output)
+
+
+def _worktree_changed_files(repo_path: Path) -> tuple[str, ...]:
+    unstaged_and_staged = _run_git(["diff", "--name-only", "HEAD"], repo_path)
+    untracked = _run_git(["ls-files", "--others", "--exclude-standard"], repo_path)
+    return tuple(
+        line
+        for line in (*unstaged_and_staged.splitlines(), *untracked.splitlines())
+        if line
+    )
+
+
+def _worktree_changed_lines(repo_path: Path) -> tuple[ChangedLine, ...]:
+    output = _run_git(["diff", "--unified=0", "HEAD"], repo_path)
+    return _parse_changed_lines(output)
+
+
+def _untracked_changed_lines(repo_path: Path) -> tuple[ChangedLine, ...]:
+    untracked = _run_git(["ls-files", "--others", "--exclude-standard"], repo_path)
+    changed_lines: list[ChangedLine] = []
+    for file_path in (line for line in untracked.splitlines() if line):
+        path = repo_path / file_path
+        if not path.is_file():
+            continue
+        try:
+            lines = path.read_text().splitlines()
+        except UnicodeDecodeError:
+            continue
+        changed_lines.extend(
+            ChangedLine(file_path=file_path, line_number=index, content=line)
+            for index, line in enumerate(lines, start=1)
+        )
+    return tuple(changed_lines)
 
 
 def _parse_changed_lines(diff_text: str) -> tuple[ChangedLine, ...]:
@@ -113,6 +155,13 @@ def _parse_new_file_path(line: str) -> str | None:
     if path == "/dev/null":
         return None
     return path.removeprefix("b/")
+
+
+def _merge_unique(
+    first_values: tuple[str, ...],
+    second_values: tuple[str, ...],
+) -> tuple[str, ...]:
+    return tuple(dict.fromkeys((*first_values, *second_values)))
 
 
 def _run_git(arguments: Sequence[str], repo_path: Path) -> str:

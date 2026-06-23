@@ -1,3 +1,8 @@
+from openpandora.project_config import (
+    ProjectConfig,
+    load_project_config,
+    write_project_config,
+)
 from openpandora.providers import (
     AuthMethod,
     Provider,
@@ -14,7 +19,6 @@ def test_list_provider_setups_marks_api_key_provider_ready_when_env_var_exists()
     assert openai_setup.configured is True
     assert openai_setup.env_var == "OPENAI_API_KEY"
     assert AuthMethod.ENVIRONMENT in openai_setup.auth_methods
-    assert AuthMethod.GUIDED in openai_setup.auth_methods
 
 
 def test_list_provider_setups_marks_missing_api_key_provider_as_not_ready():
@@ -45,6 +49,16 @@ def test_select_provider_saves_choice_without_secrets(tmp_path):
 
     loaded_config = load_selected_provider(tmp_path)
     assert loaded_config == config
+
+
+def test_select_provider_preserves_configured_commands(tmp_path):
+    write_project_config(ProjectConfig(test_command="pytest -q"), tmp_path)
+
+    select_provider("anthropic", tmp_path)
+
+    project_config = load_project_config(tmp_path)
+    assert project_config.provider == "anthropic"
+    assert project_config.test_command == "pytest -q"
 
 
 def test_load_selected_provider_returns_none_when_config_is_missing(tmp_path):

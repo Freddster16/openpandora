@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from openpandora.learned_rules import RULES_FILE
+from openpandora.project_config import CONFIG_FILE, default_config_payload
 
 DEFAULT_RULES = {
     "rules": [
@@ -29,15 +30,36 @@ class InitResult:
     """Describe whether OpenPandora created starter project files."""
 
     rules_path: Path
-    created: bool
+    config_path: Path
+    rules_created: bool
+    config_created: bool
+
+    @property
+    def created(self) -> bool:
+        """Return whether the learned-rules file was created."""
+        return self.rules_created
 
 
 def initialize_project(repo_path: str | Path = ".") -> InitResult:
-    """Create an editable learned-rules template when one is missing."""
-    path = Path(repo_path) / RULES_FILE
-    if path.exists():
-        return InitResult(rules_path=path, created=False)
+    """Create editable starter files when they are missing."""
+    root_path = Path(repo_path)
+    rules_path = root_path / RULES_FILE
+    config_path = root_path / CONFIG_FILE
 
+    rules_created = _write_json_if_missing(rules_path, DEFAULT_RULES)
+    config_created = _write_json_if_missing(config_path, default_config_payload())
+
+    return InitResult(
+        rules_path=rules_path,
+        config_path=config_path,
+        rules_created=rules_created,
+        config_created=config_created,
+    )
+
+
+def _write_json_if_missing(path: Path, payload: object) -> bool:
+    if path.exists():
+        return False
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(DEFAULT_RULES, indent=2) + "\n")
-    return InitResult(rules_path=path, created=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n")
+    return True
