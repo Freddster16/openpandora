@@ -14,10 +14,11 @@ from openpandora.file_context import collect_file_context
 from openpandora.findings import Finding
 from openpandora.git_changes import (
     GitChangeError,
-    build_fix_branch_name,
     commit_all_changes,
     create_fix_branch,
     has_worktree_changes,
+    is_openpandora_fix_branch,
+    plan_fix_attempt,
     push_branch,
 )
 from openpandora.git_context import GitCommandError, collect_repo_context
@@ -376,9 +377,28 @@ def run_fix_pr(
         _print_check_error(error)
         return 1
 
+    source_branch = request.context.branch_name
+    if is_openpandora_fix_branch(source_branch):
+        print("OpenPandora loop protection")
+        print(f"This branch was created by OpenPandora: {source_branch}")
+        print("Checks can still run, but no new fix PR was opened from this branch.")
+        return 0
+
     review_result = build_review(request)
     if not review_result.has_issues:
         print("OpenPandora did not find anything that needs a fix PR.")
+        return 0
+
+    try:
+        attempt_plan = plan_fix_attempt(source_branch, repo_path)
+    except GitChangeError as error:
+        _print_check_error(error)
+        return 1
+
+    if attempt_plan is None:
+        print("OpenPandora fix attempt limit reached")
+        print(f"It already tried 4 fix PRs for this branch: {source_branch}")
+        print("It stopped before calling the AI provider again.")
         return 0
 
     provider_text, provider_error = _request_provider_fix_text(request)
@@ -391,8 +411,7 @@ def run_fix_pr(
         print("OpenPandora could not find a usable patch in the provider response.")
         return 1
 
-    source_branch = request.context.branch_name
-    fix_branch = build_fix_branch_name(source_branch)
+    fix_branch = attempt_plan.branch_name
 
     try:
         if has_worktree_changes(repo_path):
@@ -409,6 +428,7 @@ def run_fix_pr(
         print("No files were changed and no pull request was opened.")
         print(f"Base branch: {source_branch}")
         print(f"Fix branch: {fix_branch}")
+        print(f"Fix attempt: {attempt_plan.attempt_number}/{attempt_plan.max_attempts}")
         print("Provider patch passed Git's apply check.")
         return 0
 

@@ -7,6 +7,7 @@ from openpandora import __version__, cli
 from openpandora.cli import main, run_check
 from openpandora.command_runner import CommandResult
 from openpandora.findings import Finding, Severity
+from openpandora.git_changes import FixAttemptPlan
 from openpandora.git_context import GitCommandError, RepoContext
 from openpandora.github_pull_requests import GitHubRepo, PullRequestResult
 from openpandora.learned_rules import LearnedRule
@@ -604,6 +605,15 @@ def test_fix_pr_command_prints_dry_run(monkeypatch, capsys):
         "_request_provider_fix_text",
         lambda review_request: (PATCH_TEXT, None),
     )
+    monkeypatch.setattr(
+        cli,
+        "plan_fix_attempt",
+        lambda source_branch, repo_path=".": FixAttemptPlan(
+            branch_name="openpandora/fix-feature-demo",
+            attempt_number=1,
+            max_attempts=4,
+        ),
+    )
     monkeypatch.setattr(cli, "has_worktree_changes", lambda repo_path=".": False)
     monkeypatch.setattr(
         cli,
@@ -620,6 +630,68 @@ def test_fix_pr_command_prints_dry_run(monkeypatch, capsys):
     assert "OpenPandora fix PR dry run" in output
     assert "Base branch: feature/demo" in output
     assert "Fix branch: openpandora/fix-feature-demo" in output
+    assert "Fix attempt: 1/4" in output
+
+
+def test_fix_pr_command_skips_generated_fix_branch(monkeypatch, capsys):
+    request = ReviewRequest(
+        provider="openai",
+        context=RepoContext(
+            branch_name="openpandora/fix-feature-demo",
+            current_commit="abc123def4567890",
+            changed_files=("demo.txt",),
+        ),
+        findings=(Finding(title="Fix demo", message="Demo needs a fix."),),
+    )
+
+    def fail_provider_call(review_request):
+        raise AssertionError("provider should not be called on fix branches")
+
+    monkeypatch.setattr(
+        cli,
+        "_build_review_request",
+        lambda repo_path=".", since_ref=None: request,
+    )
+    monkeypatch.setattr(cli, "_request_provider_fix_text", fail_provider_call)
+
+    assert main(["fix-pr"]) == 0
+
+    output = capsys.readouterr().out
+    assert "OpenPandora loop protection" in output
+    assert "openpandora/fix-feature-demo" in output
+    assert "no new fix PR was opened" in output
+
+
+def test_fix_pr_command_stops_after_four_attempts(monkeypatch, capsys):
+    request = ReviewRequest(
+        provider="openai",
+        context=RepoContext(
+            branch_name="feature/demo",
+            current_commit="abc123def4567890",
+            changed_files=("demo.txt",),
+        ),
+        findings=(Finding(title="Fix demo", message="Demo needs a fix."),),
+    )
+
+    def fail_provider_call(review_request):
+        raise AssertionError("provider should not be called after four attempts")
+
+    monkeypatch.setattr(
+        cli,
+        "_build_review_request",
+        lambda repo_path=".", since_ref=None: request,
+    )
+    monkeypatch.setattr(
+        cli, "plan_fix_attempt", lambda source_branch, repo_path=".": None
+    )
+    monkeypatch.setattr(cli, "_request_provider_fix_text", fail_provider_call)
+
+    assert main(["fix-pr"]) == 0
+
+    output = capsys.readouterr().out
+    assert "OpenPandora fix attempt limit reached" in output
+    assert "already tried 4 fix PRs" in output
+    assert "before calling the AI provider" in output
 
 
 def test_fix_pr_create_pushes_branch_and_creates_pr(monkeypatch, capsys):
@@ -643,6 +715,15 @@ def test_fix_pr_create_pushes_branch_and_creates_pr(monkeypatch, capsys):
         cli,
         "_request_provider_fix_text",
         lambda review_request: (PATCH_TEXT, None),
+    )
+    monkeypatch.setattr(
+        cli,
+        "plan_fix_attempt",
+        lambda source_branch, repo_path=".": FixAttemptPlan(
+            branch_name="openpandora/fix-feature-demo",
+            attempt_number=1,
+            max_attempts=4,
+        ),
     )
     monkeypatch.setattr(cli, "has_worktree_changes", lambda repo_path=".": False)
     monkeypatch.setattr(

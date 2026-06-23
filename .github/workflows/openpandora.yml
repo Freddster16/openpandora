@@ -2,8 +2,8 @@ name: OpenPandora
 
 on:
   push:
-    branches-ignore:
-      - main
+    branches:
+      - "**"
 
 permissions:
   contents: write
@@ -30,11 +30,52 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
 
+      - name: Choose comparison ref
+        id: compare
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          zero_sha="0000000000000000000000000000000000000000"
+          if [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "$zero_sha" ] && git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            echo "ref=$BEFORE_SHA" >> "$GITHUB_OUTPUT"
+            echo "Comparing this push with $BEFORE_SHA."
+          elif git rev-parse --verify origin/main >/dev/null 2>&1; then
+            echo "ref=origin/main" >> "$GITHUB_OUTPUT"
+            echo "Comparing this branch with origin/main."
+          elif git rev-parse --verify origin/master >/dev/null 2>&1; then
+            echo "ref=origin/master" >> "$GITHUB_OUTPUT"
+            echo "Comparing this branch with origin/master."
+          elif git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+            echo "ref=HEAD~1" >> "$GITHUB_OUTPUT"
+            echo "Comparing this commit with HEAD~1."
+          else
+            echo "ref=" >> "$GITHUB_OUTPUT"
+            echo "No comparison ref found; checking the current commit."
+          fi
+
+      - name: Detect OpenPandora fix branch
+        id: loop_guard
+        run: |
+          case "$GITHUB_REF_NAME" in
+            openpandora/fix-*)
+              echo "can_create_fix_pr=false" >> "$GITHUB_OUTPUT"
+              echo "OpenPandora fix branch detected; checks will run without creating another fix PR."
+              ;;
+            *)
+              echo "can_create_fix_pr=true" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
       - name: Run local QA check
         id: qa
         run: |
           set +e
-          openpandora check --since origin/main
+          COMPARE_REF="${{ steps.compare.outputs.ref }}"
+          if [ -n "$COMPARE_REF" ]; then
+            openpandora check --since "$COMPARE_REF"
+          else
+            openpandora check
+          fi
           exit_code="$?"
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
           if [ "$exit_code" -ne 0 ]; then
@@ -57,14 +98,26 @@ jobs:
           fi
 
       - name: Open fix pull request
-        if: ${{ (steps.qa.outputs.needs_fix == 'true' || steps.project_commands.outputs.needs_fix == 'true') && (vars.OPENPANDORA_PROVIDER != '' || vars.OPENPANDORA_LOCAL_COMMAND != '') }}
+        if: ${{ (steps.qa.outputs.needs_fix == 'true' || steps.project_commands.outputs.needs_fix == 'true') && steps.loop_guard.outputs.can_create_fix_pr == 'true' && (vars.OPENPANDORA_PROVIDER != '' || vars.OPENPANDORA_LOCAL_COMMAND != '') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENPANDORA_PROVIDER: ${{ vars.OPENPANDORA_PROVIDER }}
           OPENPANDORA_LOCAL_COMMAND: ${{ vars.OPENPANDORA_LOCAL_COMMAND }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: openpandora fix-pr --since origin/main --create
+        run: |
+          COMPARE_REF="${{ steps.compare.outputs.ref }}"
+          if [ -n "$COMPARE_REF" ]; then
+            openpandora fix-pr --since "$COMPARE_REF" --create
+          else
+            openpandora fix-pr --create
+          fi
+
+      - name: Explain skipped fix pull request
+        if: ${{ (steps.qa.outputs.needs_fix == 'true' || steps.project_commands.outputs.needs_fix == 'true') && steps.loop_guard.outputs.can_create_fix_pr == 'false' }}
+        run: |
+          echo "OpenPandora found something to fix, but this branch was created by OpenPandora."
+          echo "Loop protection stopped it from creating another fix PR."
 
       - name: Fail original branch check
         if: ${{ steps.qa.outputs.needs_fix == 'true' || steps.project_commands.outputs.needs_fix == 'true' }}

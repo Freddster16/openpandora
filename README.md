@@ -330,17 +330,20 @@ Supported values are `openai`, `anthropic`, and `local`.
 
 ## GitHub Action
 
-The workflow at `.github/workflows/openpandora.yml` runs on pushes to branches
-other than `main`.
+The workflow at `.github/workflows/openpandora.yml` runs on pushes to every
+branch, including `main` and `master`.
 
 It currently:
 
 - checks out the code
 - installs Python 3.11
 - installs OpenPandora with development tools
-- runs `openpandora check --since origin/main`
+- compares the push with the previous pushed commit when GitHub provides one
+- runs `openpandora check`
 - runs `openpandora test`
-- tries `openpandora fix-pr --since origin/main --create` if either command fails
+- tries `openpandora fix-pr --create` if either command fails
+- skips fix PR creation on `openpandora/fix-*` branches to prevent loops
+- stops before calling the AI provider after 4 fix attempts for one branch
 
 The fix PR step needs `GITHUB_TOKEN` plus a configured provider key, such as
 `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. It also needs
