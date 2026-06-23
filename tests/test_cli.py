@@ -1,9 +1,12 @@
+import json
+
 import pytest
 
 from openpandora import __version__, cli
 from openpandora.cli import main, run_check
 from openpandora.findings import Finding, Severity
 from openpandora.git_context import GitCommandError, RepoContext
+from openpandora.learned_rules import LearnedRule
 
 
 def test_check_command_reports_no_issues(monkeypatch, capsys):
@@ -24,6 +27,58 @@ def test_check_command_reports_no_issues(monkeypatch, capsys):
     assert "Commit: abc123def456" in output
     assert "Changed files: 1" in output
     assert "No issues found." in output
+
+
+def test_check_command_shows_loaded_learned_rules(monkeypatch, capsys):
+    context = RepoContext(
+        branch_name="feature/demo",
+        current_commit="abc123def4567890",
+        changed_files=("README.md",),
+    )
+    rules = (
+        LearnedRule(
+            title="Prefer focused tests",
+            message="Add a small test with each behavior change.",
+            severity=Severity.WARNING,
+        ),
+    )
+    monkeypatch.setattr(cli, "collect_repo_context", lambda repo_path=".": context)
+    monkeypatch.setattr(cli, "load_learned_rules", lambda repo_path=".": rules)
+    monkeypatch.setattr(cli, "run_local_checks", lambda repo_context, repo_path=".": ())
+
+    assert main(["check"]) == 0
+
+    output = capsys.readouterr().out
+    assert "Loaded learned rules: 1" in output
+    assert "Learned rules are visible but not auto-applied yet." in output
+    assert "[warning] Prefer focused tests" in output
+
+
+def test_check_command_can_print_json_results(monkeypatch, capsys):
+    context = RepoContext(
+        branch_name="feature/demo",
+        current_commit="abc123def4567890",
+        changed_files=("README.md",),
+    )
+    rules = (
+        LearnedRule(
+            title="Prefer focused tests",
+            message="Add a small test with each behavior change.",
+        ),
+    )
+    monkeypatch.setattr(cli, "collect_repo_context", lambda repo_path=".": context)
+    monkeypatch.setattr(cli, "load_learned_rules", lambda repo_path=".": rules)
+    monkeypatch.setattr(cli, "run_local_checks", lambda repo_context, repo_path=".": ())
+
+    assert main(["check", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "passed"
+    assert payload["branch"] == "feature/demo"
+    assert payload["commit"] == "abc123def4567890"
+    assert payload["changed_files"] == ["README.md"]
+    assert payload["learned_rules"][0]["title"] == "Prefer focused tests"
+    assert payload["findings"] == []
 
 
 def test_check_command_reports_findings(monkeypatch, capsys):
@@ -54,6 +109,33 @@ def test_check_command_reports_findings(monkeypatch, capsys):
     assert "Suggestion: Add a pytest case for the new behavior." in output
 
 
+def test_check_command_can_print_json_findings(monkeypatch, capsys):
+    context = RepoContext(
+        branch_name="feature/demo",
+        current_commit="abc123def4567890",
+        changed_files=("src/openpandora/cli.py",),
+    )
+    finding = Finding(
+        title="Add a test",
+        message="This change should include a focused test.",
+        severity=Severity.ERROR,
+        file_path="src/openpandora/cli.py",
+        line_number=10,
+    )
+    monkeypatch.setattr(cli, "collect_repo_context", lambda repo_path=".": context)
+    monkeypatch.setattr(cli, "load_learned_rules", lambda repo_path=".": ())
+    monkeypatch.setattr(
+        cli, "run_local_checks", lambda repo_context, repo_path=".": (finding,)
+    )
+
+    assert main(["check", "--json"]) == 1
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "failed"
+    assert payload["findings"][0]["severity"] == "error"
+    assert payload["findings"][0]["location"] == "src/openpandora/cli.py:10"
+
+
 def test_check_command_explains_non_git_directories(tmp_path, capsys):
     assert run_check(tmp_path) == 1
 
@@ -63,6 +145,15 @@ def test_check_command_explains_non_git_directories(tmp_path, capsys):
     assert "Try: cd path/to/your/project" in output
     assert "Then run: openpandora check" in output
     assert "Git command failed" not in output
+
+
+def test_check_command_can_print_json_errors(tmp_path, capsys):
+    assert run_check(tmp_path, json_output=True) == 1
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "error"
+    assert payload["message"] == "OpenPandora needs to run inside a Git project."
+    assert payload["next_step"] == "cd path/to/your/project && openpandora check"
 
 
 def test_check_command_explains_other_git_errors(monkeypatch, capsys):

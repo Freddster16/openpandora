@@ -28,13 +28,30 @@ python -m pip install -e ".[dev]"
 openpandora check
 ```
 
-The current command reads the branch, current commit, and files changed in the
-current commit. The first check set is intentionally empty, so a healthy run
-prints:
+The command reads the branch, current commit, and files changed in the current
+commit. It then runs deterministic local checks and prints calm feedback.
+
+A healthy run prints:
 
 ```text
 No issues found.
 ```
+
+For automation, use JSON output:
+
+```bash
+openpandora check --json
+```
+
+The JSON output includes the status, branch, commit, changed files, learned
+rules, and findings.
+
+## Current Checks
+
+OpenPandora currently checks for:
+
+- source changes under `src/` without a matching change under `tests/`
+- secret-looking strings such as API keys, tokens, passwords, or secrets
 
 ## Learned Rules
 
@@ -58,7 +75,8 @@ Example:
 }
 ```
 
-Rules are only loaded right now. They are not auto-applied or silently enforced.
+Rules are loaded and shown in `openpandora check` output. They are not
+auto-applied or silently enforced.
 
 ## GitHub Action
 
