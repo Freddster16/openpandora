@@ -12,6 +12,7 @@ from openpandora.checks import run_local_checks
 from openpandora.findings import Finding
 from openpandora.git_context import GitCommandError, collect_repo_context
 from openpandora.learned_rules import LearnedRule, LearnedRulesError, load_learned_rules
+from openpandora.providers import list_provider_setups
 
 
 def run_check(repo_path: str | Path = ".", json_output: bool = False) -> int:
@@ -113,6 +114,20 @@ def _rule_payload(rule: LearnedRule) -> dict:
     }
 
 
+def run_providers() -> int:
+    """Show provider auth options without exposing secret values."""
+    print("OpenPandora provider setup")
+    for setup in list_provider_setups():
+        status = "ready" if setup.configured else "needs setup"
+        print(f"- {setup.display_name} ({setup.provider}): {status}")
+        if setup.env_var:
+            print(f"  API key env var: {setup.env_var}")
+        methods = ", ".join(method.value for method in setup.auth_methods)
+        print(f"  Auth methods: {methods}")
+        print(f"  {setup.note}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI parser so commands stay small and testable."""
     parser = argparse.ArgumentParser(
@@ -136,6 +151,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print machine-readable check results.",
     )
     check_parser.set_defaults(command_handler=run_check)
+
+    providers_parser = subparsers.add_parser(
+        "providers",
+        help="Show available AI provider auth options.",
+    )
+    providers_parser.set_defaults(command_handler=run_providers)
 
     return parser
 

@@ -78,6 +78,24 @@ Example:
 Rules are loaded and shown in `openpandora check` output. They are not
 auto-applied or silently enforced.
 
+## Provider Setup
+
+OpenPandora is designed so the user can choose an AI provider later. The current
+version does not call any provider yet, but it can show the planned auth options:
+
+```bash
+openpandora providers
+```
+
+Current provider stubs:
+
+- OpenAI with `OPENAI_API_KEY`
+- Anthropic with `ANTHROPIC_API_KEY`
+- Local/self-hosted review, reserved for later
+
+The command checks whether an environment variable exists, but it never prints
+the secret value. Guided auth is planned for a later version.
+
 ## GitHub Action
 
 The workflow in `.github/workflows/openpandora.yml` runs on pushes to branches
@@ -105,4 +123,5 @@ ruff format .
 - `src/openpandora/checks.py` is the home for deterministic local QA checks.
 - `src/openpandora/findings.py` defines the shape of QA results.
 - `src/openpandora/learned_rules.py` loads readable user-controlled rules.
+- `src/openpandora/providers.py` describes provider auth options.
 - `tests/` mirrors the source files with focused pytest coverage.

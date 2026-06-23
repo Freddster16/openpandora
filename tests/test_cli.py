@@ -195,3 +195,17 @@ def test_missing_command_exits_with_usage(capsys):
     error_output = capsys.readouterr().err
     assert "usage:" in error_output
     assert "the following arguments are required: command" in error_output
+
+
+def test_providers_command_lists_auth_options(monkeypatch, capsys):
+    monkeypatch.setenv("OPENAI_API_KEY", "secret-value")
+
+    assert main(["providers"]) == 0
+
+    output = capsys.readouterr().out
+    assert "OpenPandora provider setup" in output
+    assert "OpenAI (openai): ready" in output
+    assert "Anthropic (anthropic): needs setup" in output
+    assert "API key env var: OPENAI_API_KEY" in output
+    assert "guided" in output
+    assert "secret-value" not in output

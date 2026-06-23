@@ -65,8 +65,7 @@ def test_run_local_checks_reports_each_file_once_for_secret_like_strings(tmp_pat
     second_name = "PASS" + "WORD"
     second_value = "super-secret-password"
     secret_file.write_text(
-        f"{first_name} = {first_value!r}\n"
-        f"{second_name} = {second_value!r}\n"
+        f"{first_name} = {first_value!r}\n{second_name} = {second_value!r}\n"
     )
     context = RepoContext(
         branch_name="feature/demo",
