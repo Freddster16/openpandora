@@ -1,6 +1,6 @@
 import pytest
 
-from openpandora.findings import Finding, Severity
+from openpandora.findings import Finding, Severity, finding_label
 
 
 def test_finding_defaults_to_warning_without_location():
@@ -35,6 +35,16 @@ def test_finding_formats_file_location_without_line_number():
     )
 
     assert finding.location == "src/openpandora/git_context.py"
+
+
+def test_finding_label_includes_location_when_available():
+    finding = Finding(
+        title="Missing tests",
+        message="This file changed without a matching test update.",
+        file_path="src/openpandora/findings.py",
+    )
+
+    assert finding_label(finding) == "Missing tests (src/openpandora/findings.py)"
 
 
 def test_finding_requires_a_title():
