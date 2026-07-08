@@ -188,9 +188,53 @@ def request_openai_account_review(
     )
     run = subprocess.run if runner is None else runner
 
-    with tempfile.NamedTemporaryFile(delete=False) as output_file:
-        output_path = output_file.name
+    with tempfile.TemporaryDirectory(prefix="openpandora-codex-") as temp_dir:
+        output_path = Path(temp_dir) / "last-message.txt"
+        arguments = _codex_account_arguments(
+            command,
+            selected_model,
+            reasoning,
+            output_path,
+        )
 
+        try:
+            result = run(
+                arguments,
+                input=prompt,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=300,
+            )
+        except FileNotFoundError as error:
+            raise ProviderReviewError(
+                "OpenAI account auth needs the Codex CLI. Run 'openpandora setup "
+                "--reset' and choose API key auth, or install Codex and sign in."
+            ) from error
+        except subprocess.TimeoutExpired as error:
+            raise ProviderReviewError("OpenAI account review timed out.") from error
+
+        output_text = output_path.read_text().strip() if output_path.exists() else ""
+
+    if result.returncode != 0:
+        reason = result.stderr.strip() or result.stdout.strip()
+        raise ProviderReviewError(
+            f"OpenAI account review failed with exit {result.returncode}: {reason}"
+        )
+
+    text = output_text or result.stdout.strip()
+    if not text:
+        raise ProviderReviewError("OpenAI account review returned no text.")
+
+    return ProviderReview(provider="openai", model=selected_model, text=text)
+
+
+def _codex_account_arguments(
+    command: str,
+    model: str,
+    reasoning: str | None,
+    output_path: Path,
+) -> list[str]:
     arguments = [
         command,
         "exec",
@@ -204,47 +248,14 @@ def request_openai_account_review(
         "--color",
         "never",
         "--output-last-message",
-        output_path,
+        str(output_path),
         "--model",
-        selected_model,
+        model,
     ]
     if reasoning:
         arguments.extend(["--config", f'model_reasoning_effort="{reasoning}"'])
     arguments.append("-")
-
-    try:
-        result = run(
-            arguments,
-            input=prompt,
-            text=True,
-            capture_output=True,
-            check=False,
-            timeout=300,
-        )
-    except FileNotFoundError as error:
-        Path(output_path).unlink(missing_ok=True)
-        raise ProviderReviewError(
-            "OpenAI account auth needs the Codex CLI. Run 'openpandora setup "
-            "--reset' and choose API key auth, or install Codex and sign in."
-        ) from error
-    except subprocess.TimeoutExpired as error:
-        Path(output_path).unlink(missing_ok=True)
-        raise ProviderReviewError("OpenAI account review timed out.") from error
-
-    output_text = Path(output_path).read_text().strip()
-    Path(output_path).unlink(missing_ok=True)
-
-    if result.returncode != 0:
-        reason = result.stderr.strip() or result.stdout.strip()
-        raise ProviderReviewError(
-            f"OpenAI account review failed with exit {result.returncode}: {reason}"
-        )
-
-    text = output_text or result.stdout.strip()
-    if not text:
-        raise ProviderReviewError("OpenAI account review returned no text.")
-
-    return ProviderReview(provider="openai", model=selected_model, text=text)
+    return arguments
 
 
 def request_anthropic_review(

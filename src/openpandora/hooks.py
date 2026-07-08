@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import stat
 import subprocess
 from dataclasses import dataclass
@@ -89,10 +90,11 @@ def _write_managed_hook(path: Path, content: str) -> None:
 
 def _hook_script(executable: str, event: str, create_pr: bool) -> str:
     create_pr_flag = " --create-pr" if create_pr else ""
+    executable_text = shlex.quote(executable)
     return (
         "#!/bin/sh\n"
         f"{HOOK_MARKER}\n"
-        f'exec "{executable}" wake --event {event}{create_pr_flag}\n'
+        f"exec {executable_text} wake --event {event}{create_pr_flag}\n"
     )
 
 

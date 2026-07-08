@@ -9,10 +9,18 @@ from openpandora.hooks import HookError, install_git_hooks, is_git_repo
 def test_install_git_hooks_writes_managed_wake_hooks(tmp_path):
     _init_git_repo(tmp_path)
 
-    result = install_git_hooks(tmp_path, create_pr=True, executable="openpandora")
+    result = install_git_hooks(
+        tmp_path,
+        create_pr=True,
+        executable="/tmp/open pandora",
+    )
 
     assert result.post_commit_hook.exists()
     assert result.pre_push_hook.exists()
+    assert (
+        "exec '/tmp/open pandora' wake --event commit --create-pr"
+        in result.post_commit_hook.read_text()
+    )
     assert "wake --event commit --create-pr" in result.post_commit_hook.read_text()
     assert "wake --event push --create-pr" in result.pre_push_hook.read_text()
     assert os.access(result.post_commit_hook, os.X_OK)

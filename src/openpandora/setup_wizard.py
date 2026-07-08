@@ -284,8 +284,8 @@ def _print_auth_next_step(
 ) -> None:
     if auth_method is AuthMethod.OAUTH:
         output_func(
-            "OAuth was saved as the preferred auth method. For provider "
-            "reviews today, set OPENAI_API_KEY in your shell."
+            "OpenAI account auth was saved as the preferred auth method. "
+            "Provider reviews will use your saved Codex ChatGPT login."
         )
         return
 

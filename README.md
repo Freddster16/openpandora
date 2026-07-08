@@ -259,10 +259,11 @@ The review includes:
 - optional provider review text
 - suggested next steps
 
-If `.openpandora/config.json` selects `openai` and `OPENAI_API_KEY` is set,
-OpenPandora sends a concise review prompt to OpenAI. The prompt includes changed
+If `.openpandora/config.json` selects `openai`, OpenPandora uses the saved auth
+method: either the Codex ChatGPT login for OpenAI account auth, or
+`OPENAI_API_KEY` for API key auth. It sends a concise review prompt with changed
 file names, OpenPandora findings, command results, and limited redacted file
-context so it can propose exact patches.
+context so the provider can propose exact patches.
 
 If the config selects `anthropic`, OpenPandora uses `ANTHROPIC_API_KEY`.
 If the config selects `local`, set `OPENPANDORA_LOCAL_COMMAND` to a command that
@@ -393,7 +394,7 @@ openpandora providers
 
 Current provider options:
 
-- OpenAI with `OPENAI_API_KEY` for provider review
+- OpenAI with Codex ChatGPT login or `OPENAI_API_KEY` for provider review
 - Anthropic with `ANTHROPIC_API_KEY` for provider review
 - Local or self-hosted review with `OPENPANDORA_LOCAL_COMMAND`
 

@@ -66,18 +66,22 @@ def test_setup_wizard_saves_provider_model_reasoning_without_secrets(tmp_path):
 def test_setup_wizard_runs_openai_account_auth_for_oauth(tmp_path):
     inputs = iter(["1", "1", "2", "n"])
     calls = []
+    output = []
 
     result = run_setup_wizard(
         tmp_path,
         global_config=False,
         input_func=lambda prompt: next(inputs),
-        output_func=lambda message: None,
+        output_func=output.append,
         account_auth_func=lambda **kwargs: calls.append(kwargs["output_func"]),
     )
 
     assert result.auth_method == "oauth"
     assert result.model == "gpt-5-mini"
     assert calls
+    output_text = "\n".join(output)
+    assert "saved Codex ChatGPT login" in output_text
+    assert "OPENAI_API_KEY" not in output_text
 
 
 def test_setup_wizard_can_install_sleeping_hooks(tmp_path):

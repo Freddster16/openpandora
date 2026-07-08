@@ -129,6 +129,7 @@ def test_request_openai_account_review_uses_codex_without_api_key():
         captured["arguments"] = arguments
         captured["input"] = kwargs["input"]
         output_path = Path(arguments[arguments.index("--output-last-message") + 1])
+        captured["output_path"] = output_path
         output_path.write_text("Account review.")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
@@ -150,6 +151,7 @@ def test_request_openai_account_review_uses_codex_without_api_key():
     assert "gpt-5" in captured["arguments"]
     assert 'model_reasoning_effort="high"' in captured["arguments"]
     assert captured["input"] == "Review this."
+    assert not captured["output_path"].exists()
 
 
 def test_request_provider_review_uses_account_auth_when_oauth_is_selected(
