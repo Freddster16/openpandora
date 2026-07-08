@@ -64,9 +64,9 @@ EOF
 chmod +x "$target"
 
 echo "OpenPandora installed to $target"
-if [ "${OPENPANDORA_SKIP_SETUP:-}" != "1" ] && [ -t 0 ]; then
+if [ "${OPENPANDORA_SKIP_SETUP:-}" != "1" ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
   echo "Starting first-time setup. Set OPENPANDORA_SKIP_SETUP=1 to skip this."
-  if ! "$target" setup --global --if-needed; then
+  if ! "$target" setup --global --if-needed < /dev/tty; then
     echo "Setup did not finish. You can run it later with: openpandora setup"
   fi
 fi
