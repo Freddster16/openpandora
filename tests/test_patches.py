@@ -12,6 +12,14 @@ PATCH_TEXT = """diff --git a/demo.txt b/demo.txt
 +hello world
 """
 
+BAD_COUNT_PATCH_TEXT = """diff --git a/demo.txt b/demo.txt
+--- a/demo.txt
++++ b/demo.txt
+@@ -1,99 +1,99 @@
+ hello
++world
+"""
+
 
 def test_extract_unified_diff_reads_fenced_diff_block():
     text = f"Here is the fix:\n\n```diff\n{PATCH_TEXT}```\n"
@@ -51,6 +59,19 @@ def test_apply_unified_diff_changes_files_after_git_check(tmp_path):
 
     assert result.applied is True
     assert file_path.read_text() == "hello world\n"
+
+
+def test_apply_unified_diff_recounts_bad_hunk_lengths(tmp_path):
+    _init_repo(tmp_path)
+    file_path = tmp_path / "demo.txt"
+    file_path.write_text("hello\n")
+    _git(tmp_path, "add", "demo.txt")
+    _git(tmp_path, "commit", "-m", "docs: add demo")
+
+    result = apply_unified_diff(BAD_COUNT_PATCH_TEXT, tmp_path)
+
+    assert result.applied is True
+    assert file_path.read_text() == "hello\nworld\n"
 
 
 def test_apply_unified_diff_rejects_non_patch_text(tmp_path):

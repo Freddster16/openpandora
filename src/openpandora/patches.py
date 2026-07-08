@@ -79,7 +79,7 @@ def _run_git_apply(
     patch_text: str,
     check: bool,
 ) -> subprocess.CompletedProcess[str]:
-    arguments = ["git", "apply"]
+    arguments = ["git", "apply", "--recount"]
     if check:
         arguments.append("--check")
     return subprocess.run(
