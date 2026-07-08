@@ -8,6 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeVar
 
+from openpandora.github_auth import (
+    GitHubCliAuthError,
+    ensure_github_cli_auth,
+)
 from openpandora.hooks import (
     GlobalHookInstallResult,
     HookError,
@@ -39,6 +43,7 @@ from openpandora.providers import (
 InputFunc = Callable[[str], str]
 OutputFunc = Callable[[str], None]
 AccountAuthFunc = Callable[..., object]
+GitHubAuthFunc = Callable[..., object]
 T = TypeVar("T")
 MENU_UP_KEYS = {"up", "k", "K"}
 MENU_DOWN_KEYS = {"down", "j", "J", "tab"}
@@ -58,6 +63,7 @@ class SetupResult:
     auto_create_pr: bool
     already_configured: bool = False
     hooks: GlobalHookInstallResult | None = None
+    github_auth_checked: bool = False
 
 
 def run_setup_wizard(
@@ -69,6 +75,7 @@ def run_setup_wizard(
     input_func: InputFunc = input,
     output_func: OutputFunc = print,
     account_auth_func: AccountAuthFunc = ensure_openai_account_auth,
+    github_auth_func: GitHubAuthFunc = ensure_github_cli_auth,
     executable: str = "openpandora",
 ) -> SetupResult:
     """Ask first-run setup questions in a small terminal UI."""
@@ -78,6 +85,11 @@ def run_setup_wizard(
     existing_config = load_project_config(repo_path)
     if skip_existing and not reset and _is_complete_openai_setup(existing_config):
         config_path = _setup_config_path(repo_path, global_config)
+        github_auth_checked = _ensure_github_auth_if_needed(
+            existing_config.auto_create_pr,
+            github_auth_func,
+            output_func,
+        )
         hooks = _install_global_hooks_if_possible(
             executable,
             output_func,
@@ -100,6 +112,7 @@ def run_setup_wizard(
             auto_create_pr=existing_config.auto_create_pr,
             already_configured=True,
             hooks=hooks,
+            github_auth_checked=github_auth_checked,
         )
 
     provider_setup = _openai_provider_setup(output_func)
@@ -116,6 +129,11 @@ def run_setup_wizard(
         default=True,
         input_func=input_func,
         output_func=output_func,
+    )
+    github_auth_checked = _ensure_github_auth_if_needed(
+        auto_create_pr,
+        github_auth_func,
+        output_func,
     )
 
     provider_config = select_provider(
@@ -154,6 +172,7 @@ def run_setup_wizard(
         global_config=global_config,
         auto_create_pr=auto_create_pr,
         hooks=hooks,
+        github_auth_checked=github_auth_checked,
     )
 
 
@@ -192,6 +211,17 @@ def _install_global_hooks_if_possible(
         output_func("OpenPandora could not install computer-wide Git hooks.")
         output_func(str(error))
         return None
+
+
+def _ensure_github_auth_if_needed(
+    auto_create_pr: bool,
+    github_auth_func: GitHubAuthFunc,
+    output_func: OutputFunc,
+) -> bool:
+    if not auto_create_pr:
+        return False
+    github_auth_func(output_func=output_func)
+    return True
 
 
 def _choose_auth_method(
@@ -488,7 +518,12 @@ def safe_run_setup_wizard(
             output_func=output_func,
             executable=executable,
         )
-    except (HookError, OpenAIAccountAuthError, ProjectConfigError) as error:
+    except (
+        GitHubCliAuthError,
+        HookError,
+        OpenAIAccountAuthError,
+        ProjectConfigError,
+    ) as error:
         output_func("OpenPandora could not finish setup.")
         output_func(str(error))
         return None

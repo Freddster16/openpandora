@@ -34,11 +34,14 @@ Setup asks for:
 - OpenAI model
 - reasoning level
 - automatic fix PR creation, on by default
+- GitHub CLI login for creating PRs
 
 Use Up/Down or `j`/`k` to move through setup choices, then press Enter or Space.
 
 If you choose OpenAI account sign-in and Codex CLI is missing, setup installs it
 first, then continues sign-in.
+
+If automatic PRs are on and GitHub CLI is not signed in, setup starts `gh auth login`.
 
 OpenPandora saves only non-secret preferences and remembers them after computer
 restarts. To change the model, reasoning level, or auth method later:

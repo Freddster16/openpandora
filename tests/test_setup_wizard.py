@@ -16,6 +16,7 @@ def test_setup_wizard_if_needed_skips_when_openai_setup_is_already_saved(tmp_pat
         )
     )
     output = []
+    github_auth_calls = []
 
     def fail_input(prompt):
         raise AssertionError("setup should not ask questions")
@@ -25,6 +26,9 @@ def test_setup_wizard_if_needed_skips_when_openai_setup_is_already_saved(tmp_pat
         skip_existing=True,
         input_func=fail_input,
         output_func=output.append,
+        github_auth_func=lambda **kwargs: github_auth_calls.append(
+            kwargs["output_func"]
+        ),
     )
 
     assert result.already_configured is True
@@ -32,6 +36,8 @@ def test_setup_wizard_if_needed_skips_when_openai_setup_is_already_saved(tmp_pat
     assert result.model == "gpt-5-mini"
     assert result.hooks is not None
     assert result.hooks.post_commit_hook.exists()
+    assert result.github_auth_checked is True
+    assert github_auth_calls
     assert "already set up" in "\n".join(output)
     assert "openpandora setup to change it" in "\n".join(output)
     assert "asleep for all Git repos" in "\n".join(output)
@@ -68,12 +74,16 @@ def test_setup_wizard_reopens_saved_setup_by_default(tmp_path):
 def test_setup_wizard_saves_provider_model_reasoning_without_secrets(tmp_path):
     inputs = iter(["2", "2", "3", "y"])
     output = []
+    github_auth_calls = []
 
     result = run_setup_wizard(
         tmp_path,
         global_config=False,
         input_func=lambda prompt: next(inputs),
         output_func=output.append,
+        github_auth_func=lambda **kwargs: github_auth_calls.append(
+            kwargs["output_func"]
+        ),
     )
 
     config = load_project_config(tmp_path)
@@ -84,11 +94,13 @@ def test_setup_wizard_saves_provider_model_reasoning_without_secrets(tmp_path):
     assert result.model == "gpt-5"
     assert result.reasoning == "high"
     assert result.auto_create_pr is True
+    assert result.github_auth_checked is True
     assert config.provider == "openai"
     assert config.auth_method == "environment"
     assert config.model == "gpt-5"
     assert config.reasoning == "high"
     assert config.auto_create_pr is True
+    assert github_auth_calls
     assert "OPENAI_API_KEY" not in config_text
     assert "Saved setup" in "\n".join(output)
 
@@ -96,18 +108,43 @@ def test_setup_wizard_saves_provider_model_reasoning_without_secrets(tmp_path):
 def test_setup_wizard_defaults_to_automatic_fix_prs(tmp_path):
     inputs = iter(["2", "1", "2", ""])
     output = []
+    github_auth_calls = []
 
     result = run_setup_wizard(
         tmp_path,
         global_config=False,
         input_func=lambda prompt: next(inputs),
         output_func=output.append,
+        github_auth_func=lambda **kwargs: github_auth_calls.append(
+            kwargs["output_func"]
+        ),
     )
 
     config = load_project_config(tmp_path)
 
     assert result.auto_create_pr is True
+    assert result.github_auth_checked is True
     assert config.auto_create_pr is True
+    assert github_auth_calls
+
+
+def test_setup_wizard_skips_github_auth_when_fix_prs_are_disabled(tmp_path):
+    inputs = iter(["2", "1", "2", "n"])
+    output = []
+
+    def fail_github_auth(**kwargs):
+        raise AssertionError("GitHub auth should only run for automatic fix PRs")
+
+    result = run_setup_wizard(
+        tmp_path,
+        global_config=False,
+        input_func=lambda prompt: next(inputs),
+        output_func=output.append,
+        github_auth_func=fail_github_auth,
+    )
+
+    assert result.auto_create_pr is False
+    assert result.github_auth_checked is False
 
 
 def test_setup_wizard_runs_openai_account_auth_for_oauth(tmp_path):
