@@ -350,6 +350,19 @@ def run_wake(
         return 1
 
     review_result = build_review(request)
+
+    print(f"OpenPandora woke up for {event}.")
+    if compare_ref:
+        print(f"Compared with: {compare_ref}")
+
+    if not review_result.has_issues:
+        print("OpenPandora wake: nothing found.")
+        return 0
+
+    should_create_pr = create_pr or config.auto_create_pr
+    if should_create_pr:
+        return run_fix_pr(repo_path, since_ref=compare_ref, create=True)
+
     try:
         _history_write, learning_write = _record_findings_and_learn(
             request.context,
@@ -360,26 +373,15 @@ def run_wake(
         _print_check_error(error)
         return 1
 
-    print(f"OpenPandora woke up for {event}.")
-    if compare_ref:
-        print(f"Compared with: {compare_ref}")
     if learning_write:
         print(
             f"Learned {len(learning_write.added_rules)} new rule(s) in "
             f"{learning_write.path}."
         )
 
-    if not review_result.has_issues:
-        print("OpenPandora wake: nothing found.")
-        return 0
-
-    should_create_pr = create_pr or config.auto_create_pr
-    if not should_create_pr:
-        print("OpenPandora found something to review.")
-        print("Run openpandora review for details, or wake with --create-pr.")
-        return 1
-
-    return run_fix_pr(repo_path, since_ref=compare_ref, create=True)
+    print("OpenPandora found something to review.")
+    print("Run openpandora review for details, or wake with --create-pr.")
+    return 1
 
 
 def run_pr_body(repo_path: str | Path = ".", since_ref: str | None = None) -> int:

@@ -433,11 +433,11 @@ def test_wake_reports_nothing_found(monkeypatch, capsys):
         "_build_review_request",
         lambda repo_path=".", since_ref=None: request,
     )
-    monkeypatch.setattr(
-        cli,
-        "_record_findings_and_learn",
-        lambda repo_context, findings, repo_path=".": (None, None),
-    )
+
+    def fail_record_findings(repo_context, findings, repo_path="."):
+        raise AssertionError("fix-pr wake should keep the worktree clean")
+
+    monkeypatch.setattr(cli, "_record_findings_and_learn", fail_record_findings)
 
     assert cli.run_wake(event="manual", since_ref="main") == 0
 
@@ -484,6 +484,47 @@ def test_wake_can_create_fix_pr_when_issue_is_found(monkeypatch, capsys):
 
     assert captured == {"since_ref": "main", "create": True}
     assert "OpenPandora woke up for manual." in capsys.readouterr().out
+
+
+def test_wake_records_findings_when_fix_prs_are_disabled(monkeypatch, capsys):
+    captured = {}
+    finding = Finding(title="Add a focused test", message="Missing test.")
+    request = ReviewRequest(
+        provider="openai",
+        context=RepoContext(
+            branch_name="feature/demo",
+            current_commit="abc123def4567890",
+            changed_files=("src/demo.py",),
+            base_ref="main",
+        ),
+        findings=(finding,),
+    )
+    monkeypatch.setattr(
+        cli,
+        "load_project_config",
+        lambda repo_path=".": ProjectConfig(auto_create_pr=False),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_build_review_request",
+        lambda repo_path=".", since_ref=None: request,
+    )
+
+    def fake_record_findings(repo_context, findings, repo_path="."):
+        captured["findings"] = findings
+        return (None, None)
+
+    def fail_run_fix_pr(repo_path=".", since_ref=None, create=False):
+        raise AssertionError("review-only wake should not create a fix PR")
+
+    monkeypatch.setattr(cli, "_record_findings_and_learn", fake_record_findings)
+    monkeypatch.setattr(cli, "run_fix_pr", fail_run_fix_pr)
+
+    assert cli.run_wake(event="manual", since_ref="main") == 1
+
+    output = capsys.readouterr().out
+    assert captured["findings"] == (finding,)
+    assert "OpenPandora found something to review." in output
 
 
 def test_providers_command_lists_auth_options(monkeypatch, capsys):

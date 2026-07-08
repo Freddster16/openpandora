@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openpandora"
-version = "0.1.12"
+version = "0.1.13"
 description = "A beginner-friendly QA agent for code changes."
 readme = "README.md"
 requires-python = ">=3.11"
