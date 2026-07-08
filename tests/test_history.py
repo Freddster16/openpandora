@@ -1,3 +1,5 @@
+import subprocess
+
 from openpandora.findings import Finding, Severity
 from openpandora.git_context import RepoContext
 from openpandora.history import load_history, record_findings, record_fix
@@ -33,6 +35,27 @@ def test_record_findings_appends_readable_history(tmp_path):
     assert events[0]["findings"][0]["suggestion"] == "Add tests/test_demo.py."
 
 
+def test_record_findings_hides_private_agent_state_from_git_status(tmp_path):
+    _git(tmp_path, "init")
+    context = RepoContext(
+        branch_name="feature/demo",
+        current_commit="abc123",
+        changed_files=("src/demo.py",),
+        base_ref="main",
+    )
+    finding = Finding(
+        title="Add a focused test",
+        message="A source file changed without a test.",
+        severity=Severity.WARNING,
+        file_path="src/demo.py",
+    )
+
+    record_findings(context, (finding,), tmp_path)
+
+    assert ".openpandora/" in (tmp_path / ".git" / "info" / "exclude").read_text()
+    assert ".openpandora" not in _git(tmp_path, "status", "--short")
+
+
 def test_record_findings_skips_empty_findings(tmp_path):
     context = RepoContext(
         branch_name="feature/demo",
@@ -64,3 +87,15 @@ def test_record_fix_appends_fix_history(tmp_path):
     assert events[0]["fix_branch"] == "openpandora/fix-feature-demo"
     assert events[0]["commit"] == "def456"
     assert events[0]["pull_request_url"] == "https://github.com/owner/repo/pull/1"
+
+
+def _git(repo_path, *arguments):
+    result = subprocess.run(
+        ["git", *arguments],
+        cwd=repo_path,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout.strip()

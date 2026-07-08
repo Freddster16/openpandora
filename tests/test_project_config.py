@@ -21,6 +21,28 @@ def test_load_project_config_uses_defaults_when_file_is_missing(tmp_path):
     assert config == ProjectConfig()
 
 
+def test_load_project_config_uses_noop_commands_for_swift_projects(tmp_path):
+    (tmp_path / "Ergio.xcodeproj").mkdir()
+    source_dir = tmp_path / "Ergio"
+    source_dir.mkdir()
+    (source_dir / "ErgioApp.swift").write_text("import SwiftUI\n")
+
+    config = load_project_config(tmp_path)
+
+    assert config.test_command == "true"
+    assert config.lint_command == "true"
+
+
+def test_load_project_config_keeps_python_commands_for_mixed_python_project(tmp_path):
+    (tmp_path / "Package.swift").write_text("// swift\n")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n")
+
+    config = load_project_config(tmp_path)
+
+    assert config.test_command == "python -m pytest"
+    assert config.lint_command == "ruff check ."
+
+
 def test_load_project_config_uses_env_provider_when_file_is_missing(
     tmp_path, monkeypatch
 ):

@@ -8,6 +8,7 @@ from pathlib import Path
 
 FIX_BRANCH_PREFIX = "openpandora/fix-"
 MAX_FIX_ATTEMPTS = 4
+PRIVATE_AGENT_PATHS = (".openpandora",)
 
 
 class GitChangeError(RuntimeError):
@@ -104,7 +105,11 @@ def find_fix_attempts(
 def has_worktree_changes(repo_path: str | Path = ".") -> bool:
     """Return whether there are staged, unstaged, or untracked changes."""
     output = _run_git(["status", "--porcelain"], Path(repo_path))
-    return bool(output.strip())
+    return any(
+        not _status_line_is_private_agent_path(line)
+        for line in output.splitlines()
+        if line.strip()
+    )
 
 
 def commit_all_changes(
@@ -113,7 +118,7 @@ def commit_all_changes(
 ) -> str:
     """Commit all current changes with a readable message."""
     path = Path(repo_path)
-    _run_git(["add", "-A"], path)
+    _run_git(["add", "-A", "--", ".", ":(exclude).openpandora"], path)
     if not has_staged_changes(path):
         raise GitChangeError("There are no changes to commit.")
     _run_git(["commit", "-m", message], path)
@@ -193,6 +198,20 @@ def _normalized_branch_names(branch_name: str) -> tuple[str, ...]:
     if separator and remote_branch_name.startswith(FIX_BRANCH_PREFIX):
         names.append(remote_branch_name)
     return tuple(names)
+
+
+def _status_line_is_private_agent_path(line: str) -> bool:
+    paths = line[3:].split(" -> ")
+    return all(_is_private_agent_path(path) for path in paths if path)
+
+
+def _is_private_agent_path(path: str) -> bool:
+    normalized_path = path.strip('"')
+    return any(
+        normalized_path == private_path
+        or normalized_path.startswith(f"{private_path}/")
+        for private_path in PRIVATE_AGENT_PATHS
+    )
 
 
 def _run_git(arguments: list[str], repo_path: Path) -> str:

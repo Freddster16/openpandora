@@ -18,6 +18,7 @@ REASONING_ENV_VAR = "OPENPANDORA_REASONING"
 DEFAULT_BASE_REF = "main"
 DEFAULT_TEST_COMMAND = "python -m pytest"
 DEFAULT_LINT_COMMAND = "ruff check ."
+NOOP_COMMAND = "true"
 PRIVATE_DIR_MODE = 0o700
 PRIVATE_CONFIG_MODE = 0o600
 
@@ -51,6 +52,8 @@ def load_project_config(repo_path: str | Path = ".") -> ProjectConfig:
     global_provider = _optional_string(
         global_data.get("provider"), global_path, "provider"
     )
+    default_test_command = _default_test_command(Path(repo_path))
+    default_lint_command = _default_lint_command(Path(repo_path))
     return ProjectConfig(
         provider=_environment_provider() or file_provider or global_provider,
         auth_method=(
@@ -85,10 +88,10 @@ def load_project_config(repo_path: str | Path = ".") -> ProjectConfig:
             data.get("base_ref"), DEFAULT_BASE_REF, config_path, "base_ref"
         ),
         test_command=_string_or_default(
-            commands.get("test"), DEFAULT_TEST_COMMAND, config_path, "commands.test"
+            commands.get("test"), default_test_command, config_path, "commands.test"
         ),
         lint_command=_string_or_default(
-            commands.get("lint"), DEFAULT_LINT_COMMAND, config_path, "commands.lint"
+            commands.get("lint"), default_lint_command, config_path, "commands.lint"
         ),
     )
 
@@ -231,6 +234,44 @@ def _load_global_config() -> ProjectConfig:
             default=True,
         ),
     )
+
+
+def _default_test_command(repo_path: Path) -> str:
+    if _looks_like_swift_project(repo_path) and not _looks_like_python_project(
+        repo_path
+    ):
+        return NOOP_COMMAND
+    return DEFAULT_TEST_COMMAND
+
+
+def _default_lint_command(repo_path: Path) -> str:
+    if _looks_like_swift_project(repo_path) and not _looks_like_python_project(
+        repo_path
+    ):
+        return NOOP_COMMAND
+    return DEFAULT_LINT_COMMAND
+
+
+def _looks_like_python_project(repo_path: Path) -> bool:
+    return any(
+        (repo_path / name).exists()
+        for name in (
+            "pyproject.toml",
+            "setup.py",
+            "setup.cfg",
+            "pytest.ini",
+            "requirements.txt",
+            "ruff.toml",
+        )
+    )
+
+
+def _looks_like_swift_project(repo_path: Path) -> bool:
+    if (repo_path / "Package.swift").exists():
+        return True
+    if any(repo_path.glob("*.xcodeproj")) or any(repo_path.glob("*.xcworkspace")):
+        return True
+    return any(repo_path.glob("*/*.swift"))
 
 
 def _read_config_data(config_path: Path) -> dict[str, Any]:

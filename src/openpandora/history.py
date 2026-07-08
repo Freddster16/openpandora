@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,6 +13,7 @@ from openpandora.findings import Finding
 from openpandora.git_context import RepoContext
 
 HISTORY_FILE = Path(".openpandora") / "history.jsonl"
+PRIVATE_AGENT_EXCLUDE = ".openpandora/"
 
 
 @dataclass(frozen=True)
@@ -69,7 +71,9 @@ def append_history_event(
     payload: dict[str, Any],
 ) -> HistoryWrite:
     """Append one JSON Lines history event."""
-    history_path = Path(repo_path) / HISTORY_FILE
+    repo = Path(repo_path)
+    _ensure_private_agent_state_excluded(repo)
+    history_path = repo / HISTORY_FILE
     history_path.parent.mkdir(parents=True, exist_ok=True)
     event = {
         "type": event_type,
@@ -92,6 +96,39 @@ def load_history(repo_path: str | Path = ".") -> tuple[dict[str, Any], ...]:
     return tuple(
         json.loads(line) for line in history_path.read_text().splitlines() if line
     )
+
+
+def _ensure_private_agent_state_excluded(repo_path: Path) -> None:
+    exclude_path = _git_exclude_path(repo_path)
+    if exclude_path is None:
+        return
+
+    exclude_path.parent.mkdir(parents=True, exist_ok=True)
+    existing_text = exclude_path.read_text() if exclude_path.exists() else ""
+    entries = {line.strip() for line in existing_text.splitlines()}
+    if PRIVATE_AGENT_EXCLUDE in entries:
+        return
+
+    separator = "" if not existing_text or existing_text.endswith("\n") else "\n"
+    with exclude_path.open("a") as exclude_file:
+        exclude_file.write(f"{separator}{PRIVATE_AGENT_EXCLUDE}\n")
+
+
+def _git_exclude_path(repo_path: Path) -> Path | None:
+    result = subprocess.run(
+        ["git", "rev-parse", "--git-path", "info/exclude"],
+        cwd=repo_path,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+
+    path = Path(result.stdout.strip())
+    if path.is_absolute():
+        return path
+    return repo_path / path
 
 
 def _finding_payload(finding: Finding) -> dict[str, Any]:

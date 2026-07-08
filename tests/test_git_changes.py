@@ -89,6 +89,33 @@ def test_commit_all_changes_stages_and_commits_worktree(tmp_path):
     assert _git(tmp_path, "log", "--format=%s", "-1") == "fix: update demo"
 
 
+def test_has_worktree_changes_ignores_private_agent_state(tmp_path):
+    _init_repo(tmp_path)
+    agent_dir = tmp_path / ".openpandora"
+    agent_dir.mkdir()
+    (agent_dir / "history.jsonl").write_text("{}\n")
+
+    assert has_worktree_changes(tmp_path) is False
+
+
+def test_commit_all_changes_keeps_private_agent_state_uncommitted(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "demo.txt").write_text("hello\n")
+    _git(tmp_path, "add", "demo.txt")
+    _git(tmp_path, "commit", "-m", "docs: add demo")
+    agent_dir = tmp_path / ".openpandora"
+    agent_dir.mkdir()
+    (agent_dir / "history.jsonl").write_text("{}\n")
+    (tmp_path / "demo.txt").write_text("hello world\n")
+
+    commit_all_changes("fix: update demo", tmp_path)
+
+    assert ".openpandora/history.jsonl" not in _git(
+        tmp_path, "show", "--name-only", "--format=", "HEAD"
+    )
+    assert (agent_dir / "history.jsonl").exists()
+
+
 def test_commit_all_changes_explains_empty_commit(tmp_path):
     _init_repo(tmp_path)
     (tmp_path / "demo.txt").write_text("hello\n")

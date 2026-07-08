@@ -16,6 +16,26 @@ SECRET_PATTERNS = (
         r"(?i)\b(api[_-]?key|secret|token|password)\b\s*[:=]\s*['\"][^'\"]{8,}['\"]"
     ),
 )
+SOURCE_EXTENSIONS = {
+    ".c",
+    ".cpp",
+    ".cs",
+    ".go",
+    ".java",
+    ".js",
+    ".jsx",
+    ".kt",
+    ".m",
+    ".mm",
+    ".php",
+    ".py",
+    ".rb",
+    ".rs",
+    ".swift",
+    ".ts",
+    ".tsx",
+}
+TEST_PATH_MARKERS = {"test", "tests", "__tests__"}
 
 
 def run_local_checks(
@@ -30,7 +50,7 @@ def run_local_checks(
 
 def _check_missing_tests(context: RepoContext) -> tuple[Finding, ...]:
     source_changes = tuple(
-        file_path for file_path in context.changed_files if file_path.startswith("src/")
+        file_path for file_path in context.changed_files if _is_source_file(file_path)
     )
     findings = []
     changed_files = set(context.changed_files)
@@ -50,7 +70,7 @@ def _check_missing_tests(context: RepoContext) -> tuple[Finding, ...]:
                 severity=Severity.WARNING,
                 file_path=source_file,
                 suggestion=(
-                    "Add or update one of these pytest files: "
+                    "Add or update one of these focused test files: "
                     f"{', '.join(expected_tests)}"
                 ),
             )
@@ -61,7 +81,7 @@ def _check_missing_tests(context: RepoContext) -> tuple[Finding, ...]:
 
 def _expected_test_files(source_file: str) -> tuple[str, ...]:
     source_path = Path(source_file)
-    relative_path = Path(*source_path.parts[1:])
+    relative_path = _relative_source_path(source_path)
     module_parts = relative_path.with_suffix("").parts
     module_name = "_".join(part for part in module_parts if part != "__init__")
     if not module_name:
@@ -71,12 +91,41 @@ def _expected_test_files(source_file: str) -> tuple[str, ...]:
     if leaf_name == "__init__":
         leaf_name = source_path.parent.name
 
-    candidates = (
-        f"tests/test_{leaf_name}.py",
-        str(Path("tests") / relative_path.parent / f"test_{leaf_name}.py"),
-        f"tests/test_{module_name}.py",
-    )
+    if source_path.suffix == ".swift":
+        candidates = (
+            f"{source_path.parts[0]}Tests/{leaf_name}Tests.swift",
+            f"Tests/{leaf_name}Tests.swift",
+            f"tests/test_{leaf_name}.py",
+        )
+    else:
+        candidates = (
+            f"tests/test_{leaf_name}.py",
+            str(Path("tests") / relative_path.parent / f"test_{leaf_name}.py"),
+            f"tests/test_{module_name}.py",
+        )
     return tuple(dict.fromkeys(candidates))
+
+
+def _is_source_file(file_path: str) -> bool:
+    path = Path(file_path)
+    if path.suffix not in SOURCE_EXTENSIONS:
+        return False
+    if path.suffix != ".swift" and (not path.parts or path.parts[0] != "src"):
+        return False
+    lowered_parts = {part.lower() for part in path.parts}
+    if lowered_parts.intersection(TEST_PATH_MARKERS):
+        return False
+    if any(part.lower().endswith("tests") for part in path.parts):
+        return False
+    if path.name.lower().startswith("test_") or path.stem.lower().endswith("test"):
+        return False
+    return True
+
+
+def _relative_source_path(source_path: Path) -> Path:
+    if source_path.parts and source_path.parts[0] in {"src", "lib", "app"}:
+        return Path(*source_path.parts[1:])
+    return source_path
 
 
 def _check_secret_like_strings(

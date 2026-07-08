@@ -16,7 +16,6 @@ def build_release(output_path: str | Path = DEFAULT_OUTPUT) -> Path:
     zipapp.create_archive(
         "src",
         target=output,
-        main="openpandora.cli:main",
         interpreter="/usr/bin/env python3.11",
         compressed=True,
     )
