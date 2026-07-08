@@ -33,7 +33,7 @@ Setup asks for:
 - OpenAI account sign-in or `OPENAI_API_KEY`
 - OpenAI model
 - reasoning level
-- whether wake mode should create fix PRs
+- automatic fix PR creation, on by default
 
 Use Up/Down or `j`/`k` to move through setup choices, then press Enter or Space.
 
@@ -58,8 +58,9 @@ nothing, it prints:
 OpenPandora wake: nothing found.
 ```
 
-PR creation needs `GITHUB_TOKEN`. API key auth also needs `OPENAI_API_KEY`.
-OpenAI account auth uses your saved Codex ChatGPT login.
+PR creation uses `GITHUB_TOKEN` or your authenticated GitHub CLI login. API key
+auth also needs `OPENAI_API_KEY`. OpenAI account auth uses your saved Codex
+ChatGPT login.
 
 ## Learning
 

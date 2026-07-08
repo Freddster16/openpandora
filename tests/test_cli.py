@@ -480,7 +480,7 @@ def test_wake_can_create_fix_pr_when_issue_is_found(monkeypatch, capsys):
 
     monkeypatch.setattr(cli, "run_fix_pr", fake_run_fix_pr)
 
-    assert cli.run_wake(event="manual", since_ref="main", create_pr=True) == 0
+    assert cli.run_wake(event="manual", since_ref="main") == 0
 
     assert captured == {"since_ref": "main", "create": True}
     assert "OpenPandora woke up for manual." in capsys.readouterr().out

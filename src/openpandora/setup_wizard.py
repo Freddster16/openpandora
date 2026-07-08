@@ -113,7 +113,7 @@ def run_setup_wizard(
             "Create a fix branch and GitHub PR automatically when "
             "OpenPandora wakes and finds a safe patch?"
         ),
-        default=False,
+        default=True,
         input_func=input_func,
         output_func=output_func,
     )

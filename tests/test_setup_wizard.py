@@ -93,6 +93,23 @@ def test_setup_wizard_saves_provider_model_reasoning_without_secrets(tmp_path):
     assert "Saved setup" in "\n".join(output)
 
 
+def test_setup_wizard_defaults_to_automatic_fix_prs(tmp_path):
+    inputs = iter(["2", "1", "2", ""])
+    output = []
+
+    result = run_setup_wizard(
+        tmp_path,
+        global_config=False,
+        input_func=lambda prompt: next(inputs),
+        output_func=output.append,
+    )
+
+    config = load_project_config(tmp_path)
+
+    assert result.auto_create_pr is True
+    assert config.auto_create_pr is True
+
+
 def test_setup_wizard_runs_openai_account_auth_for_oauth(tmp_path):
     inputs = iter(["1", "1", "2", "n"])
     calls = []

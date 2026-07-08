@@ -34,7 +34,7 @@ def run_project_command(
     timeout_seconds: int = 120,
 ) -> CommandResult:
     """Run one configured command without invoking a shell."""
-    arguments = _split_command(command)
+    arguments = _split_command(command, Path(repo_path))
     if not arguments:
         return CommandResult(
             name=name,
@@ -89,17 +89,20 @@ def run_project_commands(
     )
 
 
-def _split_command(command: str) -> list[str]:
+def _split_command(command: str, repo_path: Path) -> list[str]:
     arguments = shlex.split(command)
     if not arguments:
         return arguments
 
-    arguments[0] = _resolve_executable(arguments[0])
+    arguments[0] = _resolve_executable(arguments[0], repo_path)
     return arguments
 
 
-def _resolve_executable(executable: str) -> str:
+def _resolve_executable(executable: str, repo_path: Path) -> str:
     if executable == "python":
+        project_python = _project_python(repo_path)
+        if project_python is not None:
+            return str(project_python)
         return sys.executable
 
     if shutil.which(executable):
@@ -110,3 +113,14 @@ def _resolve_executable(executable: str) -> str:
         return str(sibling_executable)
 
     return executable
+
+
+def _project_python(repo_path: Path) -> Path | None:
+    candidates = (
+        repo_path / ".venv" / "bin" / "python",
+        repo_path / ".venv" / "Scripts" / "python.exe",
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None

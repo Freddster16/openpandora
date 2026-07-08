@@ -42,6 +42,18 @@ def test_run_project_command_handles_empty_command(tmp_path):
     assert result.stderr == "Command is empty."
 
 
+def test_run_project_command_prefers_project_venv_python(tmp_path):
+    python_path = tmp_path / ".venv" / "bin" / "python"
+    python_path.parent.mkdir(parents=True)
+    python_path.write_text("#!/bin/sh\nprintf 'venv python\\n'\n")
+    python_path.chmod(0o700)
+
+    result = run_project_command("test", "python -m pytest", tmp_path)
+
+    assert result.passed is True
+    assert result.stdout == "venv python\n"
+
+
 def test_run_project_commands_runs_in_order(tmp_path):
     results = run_project_commands(
         (

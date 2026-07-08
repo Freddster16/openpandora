@@ -30,7 +30,7 @@ class ProjectConfig:
     auth_method: str | None = None
     model: str | None = None
     reasoning: str | None = None
-    auto_create_pr: bool = False
+    auto_create_pr: bool = True
     base_ref: str = DEFAULT_BASE_REF
     test_command: str = DEFAULT_TEST_COMMAND
     lint_command: str = DEFAULT_LINT_COMMAND
@@ -78,7 +78,7 @@ def load_project_config(repo_path: str | Path = ".") -> ProjectConfig:
                 global_data.get("auto_create_pr"),
                 global_path,
                 "auto_create_pr",
-                default=False,
+                default=True,
             ),
         ),
         base_ref=_string_or_default(
@@ -228,7 +228,7 @@ def _load_global_config() -> ProjectConfig:
             data.get("auto_create_pr"),
             config_path,
             "auto_create_pr",
-            default=False,
+            default=True,
         ),
     )
 

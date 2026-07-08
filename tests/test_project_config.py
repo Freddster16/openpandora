@@ -148,6 +148,7 @@ def test_load_project_config_rejects_non_boolean_auto_create_pr(tmp_path):
 def test_default_config_payload_is_readable_json_shape():
     payload = default_config_payload()
 
+    assert payload["auto_create_pr"] is True
     assert payload["base_ref"] == "main"
     assert payload["commands"]["test"] == "python -m pytest"
     assert payload["commands"]["lint"] == "ruff check ."

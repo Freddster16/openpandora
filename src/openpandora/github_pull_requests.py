@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import urllib.error
 import urllib.request
@@ -112,12 +113,13 @@ def create_pull_request(
     plan: PullRequestPlan,
     environment: Mapping[str, str] | None = None,
     opener: Callable[..., Any] | None = None,
+    runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
 ) -> PullRequestResult:
-    """Create a GitHub pull request using GITHUB_TOKEN."""
+    """Create a GitHub pull request using GITHUB_TOKEN or an authenticated gh CLI."""
     current_environment = os.environ if environment is None else environment
     token = current_environment.get("GITHUB_TOKEN")
     if not token:
-        raise GitHubPullRequestError("GITHUB_TOKEN is required to create a PR.")
+        return _create_pull_request_with_gh(plan, current_environment, runner)
 
     payload = json.dumps(
         {
@@ -163,3 +165,71 @@ def create_pull_request(
         url=url,
         number=number if isinstance(number, int) else None,
     )
+
+
+def _create_pull_request_with_gh(
+    plan: PullRequestPlan,
+    environment: Mapping[str, str],
+    runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
+) -> PullRequestResult:
+    gh_runner = subprocess.run if runner is None else runner
+    if runner is None and not shutil.which("gh", path=environment.get("PATH", "")):
+        raise GitHubPullRequestError(
+            "GITHUB_TOKEN or an authenticated GitHub CLI is required to create a PR."
+        )
+
+    arguments = [
+        "gh",
+        "pr",
+        "create",
+        "--repo",
+        f"{plan.repo.owner}/{plan.repo.name}",
+        "--title",
+        plan.title,
+        "--body",
+        plan.body,
+        "--head",
+        plan.head,
+        "--base",
+        plan.base,
+    ]
+    if plan.draft:
+        arguments.append("--draft")
+
+    try:
+        result = gh_runner(
+            arguments,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=60,
+            env=dict(environment),
+        )
+    except FileNotFoundError as error:
+        raise GitHubPullRequestError(
+            "GITHUB_TOKEN or an authenticated GitHub CLI is required to create a PR."
+        ) from error
+    except subprocess.TimeoutExpired as error:
+        raise GitHubPullRequestError("GitHub PR creation with gh timed out.") from error
+
+    if result.returncode != 0:
+        reason = result.stderr.strip() or result.stdout.strip() or "unknown gh error"
+        raise GitHubPullRequestError(f"GitHub PR creation with gh failed: {reason}")
+
+    url = _extract_pull_request_url(result.stdout)
+    if url is None:
+        raise GitHubPullRequestError("GitHub CLI did not return a pull request URL.")
+
+    return PullRequestResult(url=url, number=_extract_pull_request_number(url))
+
+
+def _extract_pull_request_url(output: str) -> str | None:
+    match = re.search(r"https://github\.com/[^\s]+/[^\s]+/pull/\d+", output)
+    return match.group(0) if match else None
+
+
+def _extract_pull_request_number(url: str) -> int | None:
+    _, separator, number_text = url.rpartition("/pull/")
+    if not separator or not number_text.isdigit():
+        return None
+    return int(number_text)

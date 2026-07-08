@@ -1,4 +1,5 @@
 import json
+import subprocess
 
 import pytest
 
@@ -105,6 +106,49 @@ def test_create_pull_request_posts_expected_payload():
     assert captured["payload"]["head"] == "feature/demo"
     assert captured["payload"]["base"] == "main"
     assert captured["payload"]["draft"] is True
+
+
+def test_create_pull_request_falls_back_to_authenticated_gh():
+    captured = {}
+    plan = build_pull_request_plan(
+        repo=GitHubRepo("owner", "repo"),
+        title="OpenPandora QA",
+        body="body",
+        head="openpandora/fix-feature-demo",
+        base="feature/demo",
+    )
+
+    def fake_runner(arguments, **kwargs):
+        captured["arguments"] = arguments
+        captured["kwargs"] = kwargs
+        return subprocess.CompletedProcess(
+            arguments,
+            0,
+            stdout="https://github.com/owner/repo/pull/2\n",
+            stderr="",
+        )
+
+    result = create_pull_request(plan, environment={}, runner=fake_runner)
+
+    assert result.url == "https://github.com/owner/repo/pull/2"
+    assert result.number == 2
+    assert captured["arguments"] == [
+        "gh",
+        "pr",
+        "create",
+        "--repo",
+        "owner/repo",
+        "--title",
+        "OpenPandora QA",
+        "--body",
+        "body",
+        "--head",
+        "openpandora/fix-feature-demo",
+        "--base",
+        "feature/demo",
+        "--draft",
+    ]
+    assert captured["kwargs"]["env"] == {}
 
 
 class FakeResponse:
