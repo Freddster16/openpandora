@@ -33,6 +33,9 @@ Setup asks for:
 - reasoning level
 - whether wake mode should create fix PRs
 
+If you choose OpenAI account sign-in and Codex CLI is missing, setup installs it
+first, then continues sign-in.
+
 OpenPandora saves only non-secret preferences and remembers them after computer
 restarts. To change the model, reasoning level, or auth method later:
 
