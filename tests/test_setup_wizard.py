@@ -141,3 +141,32 @@ def test_keyboard_menu_moves_with_arrows_and_jk():
     assert _apply_menu_key(1, "j", 3) == (2, False)
     assert _apply_menu_key(2, "up", 3) == (1, False)
     assert _apply_menu_key(0, "k", 3) == (2, False)
+
+
+def test_keyboard_menu_uses_cbreak_not_raw(monkeypatch):
+    calls = []
+    inputs = iter(["enter"])
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+    monkeypatch.setattr("sys.stdin.fileno", lambda: 0)
+    monkeypatch.setattr("termios.tcgetattr", lambda fd: ["old"])
+    monkeypatch.setattr("termios.tcsetattr", lambda *args: calls.append(args))
+    monkeypatch.setattr("tty.setcbreak", lambda fd: calls.append(("cbreak", fd)))
+    monkeypatch.setattr(
+        "openpandora.setup_wizard._read_keyboard_key",
+        lambda: next(inputs),
+    )
+
+    from openpandora.setup_wizard import _choose_from_menu
+
+    result = _choose_from_menu(
+        "Pick one",
+        ("first", "second"),
+        lambda value: value,
+        input,
+        print,
+    )
+
+    assert result == "first"
+    assert ("cbreak", 0) in calls

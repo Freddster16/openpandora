@@ -297,7 +297,7 @@ def _choose_from_keyboard_menu(
 
     try:
         old_terminal_settings = termios.tcgetattr(sys.stdin.fileno())
-        tty.setraw(sys.stdin.fileno())
+        tty.setcbreak(sys.stdin.fileno())
         while True:
             if rendered_lines:
                 _clear_keyboard_menu(rendered_lines)
