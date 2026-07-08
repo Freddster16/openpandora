@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,6 +40,9 @@ InputFunc = Callable[[str], str]
 OutputFunc = Callable[[str], None]
 AccountAuthFunc = Callable[..., object]
 T = TypeVar("T")
+MENU_UP_KEYS = {"up", "k", "K"}
+MENU_DOWN_KEYS = {"down", "j", "J", "tab"}
+MENU_SELECT_KEYS = {"enter", "space"}
 
 
 @dataclass(frozen=True)
@@ -250,6 +254,17 @@ def _choose_from_menu(
     *,
     default_index: int = 1,
 ) -> T:
+    if _can_use_keyboard_menu(input_func, output_func):
+        try:
+            return _choose_from_keyboard_menu(
+                title,
+                choices,
+                label_func,
+                default_index=default_index,
+            )
+        except OSError:
+            pass
+
     output_func(title)
     for index, choice in enumerate(choices, start=1):
         default_marker = " (default)" if index == default_index else ""
@@ -266,6 +281,132 @@ def _choose_from_menu(
         output_func(f"Choose a number from 1 to {len(choices)}.")
 
 
+def _choose_from_keyboard_menu(
+    title: str,
+    choices: tuple[T, ...],
+    label_func: Callable[[T], str],
+    *,
+    default_index: int = 1,
+) -> T:
+    selected_index = default_index - 1
+    rendered_lines = 0
+    old_terminal_settings = None
+
+    import termios
+    import tty
+
+    try:
+        old_terminal_settings = termios.tcgetattr(sys.stdin.fileno())
+        tty.setraw(sys.stdin.fileno())
+        while True:
+            if rendered_lines:
+                _clear_keyboard_menu(rendered_lines)
+            rendered_lines = _render_keyboard_menu(
+                title,
+                choices,
+                label_func,
+                selected_index,
+                default_index,
+            )
+            key = _read_keyboard_key()
+            selected_index, should_select = _apply_menu_key(
+                selected_index,
+                key,
+                len(choices),
+            )
+            if should_select:
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+                return choices[selected_index]
+    finally:
+        if old_terminal_settings is not None:
+            termios.tcsetattr(
+                sys.stdin.fileno(),
+                termios.TCSADRAIN,
+                old_terminal_settings,
+            )
+
+
+def _can_use_keyboard_menu(
+    input_func: InputFunc,
+    output_func: OutputFunc,
+) -> bool:
+    if sys.platform.startswith("win"):
+        return False
+    if input_func is not input or output_func is not print:
+        return False
+    try:
+        import select  # noqa: F401
+        import termios  # noqa: F401
+        import tty  # noqa: F401
+    except ImportError:
+        return False
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _render_keyboard_menu(
+    title: str,
+    choices: tuple[T, ...],
+    label_func: Callable[[T], str],
+    selected_index: int,
+    default_index: int,
+) -> int:
+    lines = [title, "Use Up/Down or j/k, then Enter or Space."]
+    for index, choice in enumerate(choices):
+        marker = ">" if index == selected_index else " "
+        default_marker = " (default)" if index == default_index - 1 else ""
+        lines.append(f"{marker} {label_func(choice)}{default_marker}")
+    sys.stdout.write("\n".join(lines) + "\n")
+    sys.stdout.flush()
+    return len(lines)
+
+
+def _clear_keyboard_menu(line_count: int) -> None:
+    sys.stdout.write(f"\x1b[{line_count}A")
+    for _ in range(line_count):
+        sys.stdout.write("\r\x1b[2K\x1b[1B")
+    sys.stdout.write(f"\x1b[{line_count}A")
+    sys.stdout.flush()
+
+
+def _read_keyboard_key() -> str:
+    import select
+
+    char = sys.stdin.read(1)
+    if char == "\x03":
+        raise KeyboardInterrupt
+    if char in {"\r", "\n"}:
+        return "enter"
+    if char == " ":
+        return "space"
+    if char == "\t":
+        return "tab"
+    if char == "\x1b":
+        sequence = char
+        while len(sequence) < 3 and select.select([sys.stdin], [], [], 0.05)[0]:
+            sequence += sys.stdin.read(1)
+        if sequence == "\x1b[A":
+            return "up"
+        if sequence == "\x1b[B":
+            return "down"
+        return "escape"
+    return char
+
+
+def _apply_menu_key(
+    selected_index: int,
+    key: str,
+    choice_count: int,
+) -> tuple[int, bool]:
+    if key in MENU_UP_KEYS:
+        return (selected_index - 1) % choice_count, False
+    if key in MENU_DOWN_KEYS:
+        return (selected_index + 1) % choice_count, False
+    if key in MENU_SELECT_KEYS:
+        return selected_index, True
+    return selected_index, False
+
+
 def _ask_yes_no(
     question: str,
     *,
@@ -273,6 +414,17 @@ def _ask_yes_no(
     input_func: InputFunc,
     output_func: OutputFunc,
 ) -> bool:
+    if _can_use_keyboard_menu(input_func, output_func):
+        try:
+            return _choose_from_keyboard_menu(
+                question,
+                (True, False),
+                lambda value: "Yes" if value else "No",
+                default_index=1 if default else 2,
+            )
+        except OSError:
+            pass
+
     suffix = "Y/n" if default else "y/N"
     while True:
         answer = input_func(f"{question} [{suffix}] ").strip().lower()

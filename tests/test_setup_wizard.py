@@ -3,7 +3,7 @@ from openpandora.project_config import (
     load_project_config,
     write_global_config,
 )
-from openpandora.setup_wizard import run_setup_wizard
+from openpandora.setup_wizard import _apply_menu_key, run_setup_wizard
 
 
 def test_setup_wizard_if_needed_skips_when_openai_setup_is_already_saved(tmp_path):
@@ -129,3 +129,15 @@ def test_setup_wizard_can_install_computer_wide_sleeping_hooks(tmp_path):
     assert result.hooks.post_commit_hook.exists()
     assert result.hooks.pre_push_hook.exists()
     assert "asleep for all Git repos" in "\n".join(output)
+
+
+def test_keyboard_menu_selects_with_enter_or_space():
+    assert _apply_menu_key(1, "enter", 3) == (1, True)
+    assert _apply_menu_key(1, "space", 3) == (1, True)
+
+
+def test_keyboard_menu_moves_with_arrows_and_jk():
+    assert _apply_menu_key(0, "down", 3) == (1, False)
+    assert _apply_menu_key(1, "j", 3) == (2, False)
+    assert _apply_menu_key(2, "up", 3) == (1, False)
+    assert _apply_menu_key(0, "k", 3) == (2, False)

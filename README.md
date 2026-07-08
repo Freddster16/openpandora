@@ -33,6 +33,8 @@ Setup asks for:
 - reasoning level
 - whether wake mode should create fix PRs
 
+Use Up/Down or `j`/`k` to move through setup choices, then press Enter or Space.
+
 If you choose OpenAI account sign-in and Codex CLI is missing, setup installs it
 first, then continues sign-in.
 
