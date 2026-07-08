@@ -41,3 +41,12 @@ class Finding:
         if self.line_number is None:
             return self.file_path
         return f"{self.file_path}:{self.line_number}"
+
+
+def finding_label(finding: Finding) -> str:
+    """Return a short label that includes location when available."""
+    title = finding.title
+    location = finding.location
+    if location is None:
+        return title
+    return f"{title} ({location})"
