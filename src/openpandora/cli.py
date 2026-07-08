@@ -209,9 +209,17 @@ def run_providers(
     return 0
 
 
-def run_setup(repo_path: str | Path = ".", global_config: bool = True) -> int:
+def run_setup(
+    repo_path: str | Path = ".",
+    global_config: bool = True,
+    reset: bool = False,
+) -> int:
     """Run first-time terminal setup."""
-    result = safe_run_setup_wizard(repo_path, global_config=global_config)
+    result = safe_run_setup_wizard(
+        repo_path,
+        global_config=global_config,
+        reset=reset,
+    )
     return 0 if result else 1
 
 
@@ -792,6 +800,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Save setup to this project's .openpandora/config.json.",
     )
+    setup_parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Ask setup questions again and replace the saved OpenAI setup.",
+    )
     setup_parser.set_defaults(command_handler=run_setup)
 
     sleep_parser = subparsers.add_parser(
@@ -940,7 +953,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             global_config=args.global_config,
         )
     if args.command == "setup":
-        return args.command_handler(global_config=args.global_config)
+        return args.command_handler(global_config=args.global_config, reset=args.reset)
     if args.command == "sleep":
         return args.command_handler(create_pr=args.create_pr)
     if args.command == "wake":

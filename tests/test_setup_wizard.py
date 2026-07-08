@@ -1,7 +1,38 @@
 import subprocess
 
-from openpandora.project_config import load_project_config
+from openpandora.project_config import (
+    ProjectConfig,
+    load_project_config,
+    write_global_config,
+)
 from openpandora.setup_wizard import run_setup_wizard
+
+
+def test_setup_wizard_skips_when_openai_setup_is_already_saved(tmp_path):
+    write_global_config(
+        ProjectConfig(
+            provider="openai",
+            auth_method="environment",
+            model="gpt-5-mini",
+            reasoning="medium",
+        )
+    )
+    output = []
+
+    def fail_input(prompt):
+        raise AssertionError("setup should not ask questions")
+
+    result = run_setup_wizard(
+        tmp_path,
+        input_func=fail_input,
+        output_func=output.append,
+    )
+
+    assert result.already_configured is True
+    assert result.provider == "openai"
+    assert result.model == "gpt-5-mini"
+    assert "already set up" in "\n".join(output)
+    assert "--reset" in "\n".join(output)
 
 
 def test_setup_wizard_saves_provider_model_reasoning_without_secrets(tmp_path):

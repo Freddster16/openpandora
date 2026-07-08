@@ -13,6 +13,13 @@ from openpandora.hooks import (
     install_git_hooks,
     is_git_repo,
 )
+from openpandora.project_config import (
+    CONFIG_FILE,
+    ProjectConfig,
+    ProjectConfigError,
+    global_config_path,
+    load_project_config,
+)
 from openpandora.providers import (
     AuthMethod,
     ModelOption,
@@ -41,6 +48,7 @@ class SetupResult:
     config_path: Path
     global_config: bool
     auto_create_pr: bool
+    already_configured: bool = False
     hooks: HookInstallResult | None = None
 
 
@@ -48,12 +56,30 @@ def run_setup_wizard(
     repo_path: str | Path = ".",
     *,
     global_config: bool = True,
+    reset: bool = False,
     input_func: InputFunc = input,
     output_func: OutputFunc = print,
 ) -> SetupResult:
     """Ask first-run setup questions in a small terminal UI."""
     output_func("OpenPandora setup")
     output_func("")
+
+    existing_config = load_project_config(repo_path)
+    if not reset and _is_complete_openai_setup(existing_config):
+        config_path = _setup_config_path(repo_path, global_config)
+        output_func("OpenPandora is already set up for OpenAI.")
+        output_func(f"Using saved setup from {config_path}.")
+        output_func("Run openpandora setup --reset to change it.")
+        return SetupResult(
+            provider="openai",
+            auth_method=existing_config.auth_method or "",
+            model=existing_config.model or "",
+            reasoning=existing_config.reasoning or "",
+            config_path=config_path,
+            global_config=global_config,
+            auto_create_pr=existing_config.auto_create_pr,
+            already_configured=True,
+        )
 
     provider_setup = _openai_provider_setup(output_func)
     auth_method = _choose_auth_method(provider_setup, input_func, output_func)
@@ -117,6 +143,21 @@ def _openai_provider_setup(
             output_func("AI company: OpenAI")
             return setup
     raise RuntimeError("OpenAI provider setup is not available.")
+
+
+def _is_complete_openai_setup(config: ProjectConfig) -> bool:
+    return bool(
+        config.provider == "openai"
+        and config.auth_method
+        and config.model
+        and config.reasoning
+    )
+
+
+def _setup_config_path(repo_path: str | Path, global_config: bool) -> Path:
+    if global_config:
+        return global_config_path()
+    return Path(repo_path) / CONFIG_FILE
 
 
 def _choose_auth_method(
@@ -248,6 +289,7 @@ def safe_run_setup_wizard(
     repo_path: str | Path = ".",
     *,
     global_config: bool = True,
+    reset: bool = False,
     input_func: InputFunc = input,
     output_func: OutputFunc = print,
 ) -> SetupResult | None:
@@ -256,10 +298,11 @@ def safe_run_setup_wizard(
         return run_setup_wizard(
             repo_path,
             global_config=global_config,
+            reset=reset,
             input_func=input_func,
             output_func=output_func,
         )
-    except HookError as error:
-        output_func("OpenPandora could not install sleeping Git hooks.")
+    except (HookError, ProjectConfigError) as error:
+        output_func("OpenPandora could not finish setup.")
         output_func(str(error))
         return None

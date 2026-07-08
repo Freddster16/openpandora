@@ -79,6 +79,13 @@ You can run setup later with:
 openpandora setup
 ```
 
+After setup is saved, OpenPandora reuses it across restarts and later installer
+runs. To change the saved OpenAI setup, run:
+
+```bash
+openpandora setup --reset
+```
+
 To build that release asset:
 
 ```bash
@@ -164,6 +171,9 @@ API key from the environment, which OpenAI model to call, and how much reasoning
 effort to request. OpenPandora saves only non-secret preferences in the
 per-user config. API keys still live in your shell environment, and OAuth
 tokens are not stored by OpenPandora.
+
+Once setup is complete, OpenPandora remembers it across computer restarts and
+does not ask again unless you run `openpandora setup --reset`.
 
 To save choices only for the current project:
 
