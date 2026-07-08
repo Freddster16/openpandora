@@ -166,11 +166,11 @@ Run:
 openpandora setup
 ```
 
-The setup wizard uses OpenAI. It asks whether you prefer browser OAuth or an
-API key from the environment, which OpenAI model to call, and how much reasoning
-effort to request. OpenPandora saves only non-secret preferences in the
-per-user config. API keys still live in your shell environment, and OAuth
-tokens are not stored by OpenPandora.
+The setup wizard uses OpenAI. It asks whether you prefer OpenAI account auth or
+an API key from the environment, which OpenAI model to call, and how much
+reasoning effort to request. If you choose OpenAI account auth, OpenPandora
+uses Codex's ChatGPT sign-in flow and cached login. OpenPandora saves only
+non-secret preferences in the per-user config.
 
 Once setup is complete, OpenPandora remembers it across computer restarts and
 does not ask again unless you run `openpandora setup --reset`.
@@ -190,9 +190,10 @@ openpandora providers select openai \
   --reasoning medium
 ```
 
-For provider reviews and fix patches today, set `OPENAI_API_KEY` in your shell.
-Anthropic and local/self-hosted models are still available through manual
-provider config, but the first-time setup flow stays focused on OpenAI.
+For API key auth, set `OPENAI_API_KEY` in your shell. For OpenAI account auth,
+install/sign in with the Codex CLI when setup asks. Anthropic and
+local/self-hosted models are still available through manual provider config,
+but the first-time setup flow stays focused on OpenAI.
 
 ## Sleep Until Git Wakes It
 
@@ -213,8 +214,9 @@ a safe provider patch:
 openpandora sleep --create-pr
 ```
 
-That path needs OpenAI configured, `OPENAI_API_KEY` for provider patches today,
-and `GITHUB_TOKEN`. If no issue is found, the wake flow prints:
+That path needs OpenAI configured and `GITHUB_TOKEN`. If you choose API key
+auth, it also needs `OPENAI_API_KEY`; if you choose OpenAI account auth, it uses
+the saved Codex ChatGPT login. If no issue is found, the wake flow prints:
 
 ```text
 OpenPandora wake: nothing found.

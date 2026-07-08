@@ -1,5 +1,7 @@
 import json
 import sys
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -16,6 +18,7 @@ from openpandora.provider_clients import (
     request_anthropic_review,
     request_local_fix,
     request_local_review,
+    request_openai_account_review,
     request_openai_review,
     request_provider_fix,
     request_provider_review,
@@ -117,6 +120,70 @@ def test_request_provider_fix_explains_unconnected_provider():
 def test_request_openai_review_requires_api_key():
     with pytest.raises(ProviderReviewError, match="OPENAI_API_KEY"):
         request_openai_review("Review this.", environment={})
+
+
+def test_request_openai_account_review_uses_codex_without_api_key():
+    captured = {}
+
+    def fake_runner(arguments, **kwargs):
+        captured["arguments"] = arguments
+        captured["input"] = kwargs["input"]
+        output_path = Path(arguments[arguments.index("--output-last-message") + 1])
+        output_path.write_text("Account review.")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    review = request_openai_account_review(
+        "Review this.",
+        model="gpt-5",
+        reasoning="high",
+        environment={"OPENPANDORA_CODEX_COMMAND": "codex-test"},
+        runner=fake_runner,
+    )
+
+    assert review.provider == "openai"
+    assert review.model == "gpt-5"
+    assert review.text == "Account review."
+    assert captured["arguments"][:2] == ["codex-test", "exec"]
+    assert "--ignore-user-config" in captured["arguments"]
+    assert "--ignore-rules" in captured["arguments"]
+    assert "--model" in captured["arguments"]
+    assert "gpt-5" in captured["arguments"]
+    assert 'model_reasoning_effort="high"' in captured["arguments"]
+    assert captured["input"] == "Review this."
+
+
+def test_request_provider_review_uses_account_auth_when_oauth_is_selected(
+    monkeypatch,
+):
+    captured = {}
+
+    def fake_account_review(prompt, **kwargs):
+        captured["prompt"] = prompt
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(provider="openai", model=kwargs["model"], text="ok")
+
+    monkeypatch.setattr(
+        "openpandora.provider_clients.request_openai_account_review",
+        fake_account_review,
+    )
+    request = ReviewRequest(
+        provider="openai",
+        auth_method="oauth",
+        model="gpt-5",
+        reasoning="medium",
+        context=RepoContext(
+            branch_name="feature/demo",
+            current_commit="abc123def4567890",
+            changed_files=(),
+        ),
+        findings=(),
+    )
+
+    review = request_provider_review(request, environment={})
+
+    assert review.text == "ok"
+    assert captured["kwargs"]["model"] == "gpt-5"
+    assert captured["kwargs"]["reasoning"] == "medium"
 
 
 def test_request_anthropic_review_requires_api_key():

@@ -63,9 +63,26 @@ def test_setup_wizard_saves_provider_model_reasoning_without_secrets(tmp_path):
     assert "Saved setup" in "\n".join(output)
 
 
+def test_setup_wizard_runs_openai_account_auth_for_oauth(tmp_path):
+    inputs = iter(["1", "1", "2", "n"])
+    calls = []
+
+    result = run_setup_wizard(
+        tmp_path,
+        global_config=False,
+        input_func=lambda prompt: next(inputs),
+        output_func=lambda message: None,
+        account_auth_func=lambda **kwargs: calls.append(kwargs["output_func"]),
+    )
+
+    assert result.auth_method == "oauth"
+    assert result.model == "gpt-5-mini"
+    assert calls
+
+
 def test_setup_wizard_can_install_sleeping_hooks(tmp_path):
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-    inputs = iter(["", "", "", "n", "y"])
+    inputs = iter(["2", "", "", "n", "y"])
 
     result = run_setup_wizard(
         tmp_path,

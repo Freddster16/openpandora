@@ -18,6 +18,7 @@ class ReviewRequest:
     provider: str
     context: RepoContext
     findings: tuple[Finding, ...]
+    auth_method: str | None = None
     model: str | None = None
     reasoning: str | None = None
     learned_rules: tuple[LearnedRule, ...] = ()
@@ -85,6 +86,8 @@ def build_review_report(request: ReviewRequest, result: ReviewResult) -> str:
         lines.append(f"Model: {request.model}")
     if request.reasoning:
         lines.append(f"Reasoning: {request.reasoning}")
+    if request.auth_method:
+        lines.append(f"Auth: {request.auth_method}")
     if request.context.base_ref:
         lines.append(f"Compared with: {request.context.base_ref}")
 

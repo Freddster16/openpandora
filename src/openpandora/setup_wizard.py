@@ -13,6 +13,10 @@ from openpandora.hooks import (
     install_git_hooks,
     is_git_repo,
 )
+from openpandora.openai_account import (
+    OpenAIAccountAuthError,
+    ensure_openai_account_auth,
+)
 from openpandora.project_config import (
     CONFIG_FILE,
     ProjectConfig,
@@ -34,6 +38,7 @@ from openpandora.providers import (
 
 InputFunc = Callable[[str], str]
 OutputFunc = Callable[[str], None]
+AccountAuthFunc = Callable[..., object]
 T = TypeVar("T")
 
 
@@ -59,6 +64,7 @@ def run_setup_wizard(
     reset: bool = False,
     input_func: InputFunc = input,
     output_func: OutputFunc = print,
+    account_auth_func: AccountAuthFunc = ensure_openai_account_auth,
 ) -> SetupResult:
     """Ask first-run setup questions in a small terminal UI."""
     output_func("OpenPandora setup")
@@ -83,6 +89,8 @@ def run_setup_wizard(
 
     provider_setup = _openai_provider_setup(output_func)
     auth_method = _choose_auth_method(provider_setup, input_func, output_func)
+    if auth_method is AuthMethod.OAUTH:
+        account_auth_func(output_func=output_func)
     model = _choose_model(provider_setup.provider, input_func, output_func)
     reasoning = _choose_reasoning(input_func, output_func)
     auto_create_pr = _ask_yes_no(
@@ -257,7 +265,7 @@ def _ask_yes_no(
 
 def _auth_method_label(auth_method: AuthMethod) -> str:
     if auth_method is AuthMethod.OAUTH:
-        return "Browser OAuth"
+        return "OpenAI account sign-in"
     if auth_method is AuthMethod.ENVIRONMENT:
         return "API key from environment"
     return "No auth needed"
@@ -302,7 +310,7 @@ def safe_run_setup_wizard(
             input_func=input_func,
             output_func=output_func,
         )
-    except (HookError, ProjectConfigError) as error:
+    except (HookError, OpenAIAccountAuthError, ProjectConfigError) as error:
         output_func("OpenPandora could not finish setup.")
         output_func(str(error))
         return None

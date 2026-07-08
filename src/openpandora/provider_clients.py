@@ -6,10 +6,12 @@ import json
 import os
 import shlex
 import subprocess
+import tempfile
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from openpandora.review import ReviewRequest
@@ -20,6 +22,7 @@ DEFAULT_OPENAI_MODEL = "gpt-5-mini"
 DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-8"
 ANTHROPIC_VERSION = "2023-06-01"
 LOCAL_COMMAND_ENV_VAR = "OPENPANDORA_LOCAL_COMMAND"
+CODEX_COMMAND_ENV_VAR = "OPENPANDORA_CODEX_COMMAND"
 
 
 class ProviderReviewError(RuntimeError):
@@ -47,6 +50,13 @@ def request_provider_review(
             environment=environment,
         )
     if request.provider == "openai":
+        if request.auth_method == "oauth":
+            return request_openai_account_review(
+                build_provider_prompt(request),
+                model=request.model,
+                reasoning=request.reasoning,
+                environment=environment,
+            )
         return request_openai_review(
             build_provider_prompt(request),
             model=request.model,
@@ -74,6 +84,13 @@ def request_provider_fix(
 ) -> ProviderReview:
     """Ask the selected provider for a small unified diff fix."""
     if request.provider == "openai":
+        if request.auth_method == "oauth":
+            return request_openai_account_review(
+                build_provider_fix_prompt(request),
+                model=request.model,
+                reasoning=request.reasoning,
+                environment=environment,
+            )
         return request_openai_review(
             build_provider_fix_prompt(request),
             model=request.model,
@@ -150,6 +167,82 @@ def request_openai_review(
     text = _extract_openai_text(data)
     if not text:
         raise ProviderReviewError("OpenAI returned no review text.")
+
+    return ProviderReview(provider="openai", model=selected_model, text=text)
+
+
+def request_openai_account_review(
+    prompt: str,
+    model: str | None = None,
+    reasoning: str | None = None,
+    environment: Mapping[str, str] | None = None,
+    runner: Callable[..., Any] | None = None,
+) -> ProviderReview:
+    """Request review text through Codex's cached OpenAI account auth."""
+    current_environment = os.environ if environment is None else environment
+    command = current_environment.get(CODEX_COMMAND_ENV_VAR, "codex")
+    selected_model = (
+        model
+        or current_environment.get("OPENPANDORA_OPENAI_MODEL")
+        or DEFAULT_OPENAI_MODEL
+    )
+    run = subprocess.run if runner is None else runner
+
+    with tempfile.NamedTemporaryFile(delete=False) as output_file:
+        output_path = output_file.name
+
+    arguments = [
+        command,
+        "exec",
+        "--ephemeral",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--sandbox",
+        "read-only",
+        "--ask-for-approval",
+        "never",
+        "--color",
+        "never",
+        "--output-last-message",
+        output_path,
+        "--model",
+        selected_model,
+    ]
+    if reasoning:
+        arguments.extend(["--config", f'model_reasoning_effort="{reasoning}"'])
+    arguments.append("-")
+
+    try:
+        result = run(
+            arguments,
+            input=prompt,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=300,
+        )
+    except FileNotFoundError as error:
+        Path(output_path).unlink(missing_ok=True)
+        raise ProviderReviewError(
+            "OpenAI account auth needs the Codex CLI. Run 'openpandora setup "
+            "--reset' and choose API key auth, or install Codex and sign in."
+        ) from error
+    except subprocess.TimeoutExpired as error:
+        Path(output_path).unlink(missing_ok=True)
+        raise ProviderReviewError("OpenAI account review timed out.") from error
+
+    output_text = Path(output_path).read_text().strip()
+    Path(output_path).unlink(missing_ok=True)
+
+    if result.returncode != 0:
+        reason = result.stderr.strip() or result.stdout.strip()
+        raise ProviderReviewError(
+            f"OpenAI account review failed with exit {result.returncode}: {reason}"
+        )
+
+    text = output_text or result.stdout.strip()
+    if not text:
+        raise ProviderReviewError("OpenAI account review returned no text.")
 
     return ProviderReview(provider="openai", model=selected_model, text=text)
 

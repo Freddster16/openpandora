@@ -638,6 +638,7 @@ def _build_review_request(
     )
     return ReviewRequest(
         provider=config.provider or "local",
+        auth_method=config.auth_method,
         model=config.model,
         reasoning=config.reasoning,
         context=context,

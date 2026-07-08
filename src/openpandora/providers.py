@@ -95,8 +95,8 @@ def list_provider_setups(
             auth_methods=(AuthMethod.OAUTH, AuthMethod.ENVIRONMENT),
             env_var="OPENAI_API_KEY",
             note=(
-                "Use browser OAuth when available, or an API key from the "
-                "environment."
+                "Use OpenAI account sign-in through Codex, or an API key from "
+                "the environment."
             ),
             environment=current_environment,
         ),
