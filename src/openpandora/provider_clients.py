@@ -244,8 +244,6 @@ def _codex_account_arguments(
         "--ignore-rules",
         "--sandbox",
         "read-only",
-        "--ask-for-approval",
-        "never",
         "--color",
         "never",
         "--output-last-message",

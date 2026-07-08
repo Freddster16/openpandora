@@ -194,6 +194,7 @@ def test_request_openai_account_review_uses_codex_without_api_key():
     assert captured["arguments"][:2] == ["codex-test", "exec"]
     assert "--ignore-user-config" in captured["arguments"]
     assert "--ignore-rules" in captured["arguments"]
+    assert "--ask-for-approval" not in captured["arguments"]
     assert "--model" in captured["arguments"]
     assert "gpt-5" in captured["arguments"]
     assert 'model_reasoning_effort="high"' in captured["arguments"]
