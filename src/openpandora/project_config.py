@@ -65,9 +65,7 @@ def load_project_config(repo_path: str | Path = ".") -> ProjectConfig:
         reasoning=(
             _environment_string(REASONING_ENV_VAR)
             or _optional_string(data.get("reasoning"), config_path, "reasoning")
-            or _optional_string(
-                global_data.get("reasoning"), global_path, "reasoning"
-            )
+            or _optional_string(global_data.get("reasoning"), global_path, "reasoning")
         ),
         auto_create_pr=_optional_bool(
             data.get("auto_create_pr"),
@@ -144,9 +142,7 @@ def update_project_config(
         model=current_config.model if model is None else model,
         reasoning=current_config.reasoning if reasoning is None else reasoning,
         auto_create_pr=(
-            current_config.auto_create_pr
-            if auto_create_pr is None
-            else auto_create_pr
+            current_config.auto_create_pr if auto_create_pr is None else auto_create_pr
         ),
         base_ref=current_config.base_ref if base_ref is None else base_ref,
         test_command=(
@@ -178,9 +174,7 @@ def update_global_config(
         model=current_config.model if model is None else model,
         reasoning=current_config.reasoning if reasoning is None else reasoning,
         auto_create_pr=(
-            current_config.auto_create_pr
-            if auto_create_pr is None
-            else auto_create_pr
+            current_config.auto_create_pr if auto_create_pr is None else auto_create_pr
         ),
     )
     write_global_config(next_config)

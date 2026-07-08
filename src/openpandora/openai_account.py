@@ -84,7 +84,5 @@ def _status_mentions_chatgpt(status) -> bool:
         getattr(status, "stdout", ""),
         getattr(status, "stderr", ""),
     )
-    output = "\n".join(
-        value for value in status_parts if value
-    )
+    output = "\n".join(value for value in status_parts if value)
     return "chatgpt" in output.lower()

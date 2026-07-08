@@ -225,9 +225,7 @@ def select_provider(
         ),
         model=saved_config.model,
         reasoning=(
-            ReasoningLevel(saved_config.reasoning)
-            if saved_config.reasoning
-            else None
+            ReasoningLevel(saved_config.reasoning) if saved_config.reasoning else None
         ),
     )
 
