@@ -41,6 +41,15 @@ def create_fix_branch(
     return branch_name
 
 
+def switch_branch(
+    branch_name: str,
+    repo_path: str | Path = ".",
+) -> str:
+    """Switch back to an existing branch."""
+    _run_git(["switch", branch_name], Path(repo_path))
+    return branch_name
+
+
 def build_fix_branch_name(source_branch: str, attempt_number: int = 1) -> str:
     """Build a predictable fix branch name from the source branch."""
     if attempt_number < 1:

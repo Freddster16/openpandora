@@ -12,6 +12,7 @@ from openpandora.git_context import GitCommandError, RepoContext
 from openpandora.github_pull_requests import GitHubRepo, PullRequestResult
 from openpandora.learned_rules import LearnedRule
 from openpandora.patches import PatchResult
+from openpandora.project_config import ProjectConfig
 from openpandora.review import ReviewRequest
 
 PATCH_TEXT = """diff --git a/demo.txt b/demo.txt
@@ -364,6 +365,68 @@ def test_test_command_returns_failure_when_a_command_fails(monkeypatch, capsys):
     assert "Tests: failed with exit 1" in output
     assert "tests failed" in output
     assert "One or more configured commands failed." in output
+
+
+def test_wake_reports_nothing_found(monkeypatch, capsys):
+    request = ReviewRequest(
+        provider="local",
+        context=RepoContext(
+            branch_name="feature/demo",
+            current_commit="abc123def4567890",
+            changed_files=(),
+            base_ref="main",
+        ),
+        findings=(),
+    )
+    monkeypatch.setattr(
+        cli, "load_project_config", lambda repo_path=".": ProjectConfig()
+    )
+    monkeypatch.setattr(
+        cli,
+        "_build_review_request",
+        lambda repo_path=".", since_ref=None: request,
+    )
+
+    assert cli.run_wake(event="manual", since_ref="main") == 0
+
+    output = capsys.readouterr().out
+    assert "OpenPandora woke up for manual." in output
+    assert "OpenPandora wake: nothing found." in output
+
+
+def test_wake_can_create_fix_pr_when_issue_is_found(monkeypatch, capsys):
+    captured = {}
+    finding = Finding(title="Add a focused test", message="Missing test.")
+    request = ReviewRequest(
+        provider="openai",
+        context=RepoContext(
+            branch_name="feature/demo",
+            current_commit="abc123def4567890",
+            changed_files=("src/demo.py",),
+            base_ref="main",
+        ),
+        findings=(finding,),
+    )
+    monkeypatch.setattr(
+        cli, "load_project_config", lambda repo_path=".": ProjectConfig()
+    )
+    monkeypatch.setattr(
+        cli,
+        "_build_review_request",
+        lambda repo_path=".", since_ref=None: request,
+    )
+
+    def fake_run_fix_pr(repo_path=".", since_ref=None, create=False):
+        captured["since_ref"] = since_ref
+        captured["create"] = create
+        return 0
+
+    monkeypatch.setattr(cli, "run_fix_pr", fake_run_fix_pr)
+
+    assert cli.run_wake(event="manual", since_ref="main", create_pr=True) == 0
+
+    assert captured == {"since_ref": "main", "create": True}
+    assert "OpenPandora woke up for manual." in capsys.readouterr().out
 
 
 def test_providers_command_lists_auth_options(monkeypatch, capsys):
@@ -754,6 +817,11 @@ def test_fix_pr_create_pushes_branch_and_creates_pr(monkeypatch, capsys):
     )
     monkeypatch.setattr(
         cli,
+        "switch_branch",
+        lambda branch_name, repo_path=".": calls.append(("switch", branch_name)),
+    )
+    monkeypatch.setattr(
+        cli,
         "detect_github_repo",
         lambda repo_path=".": GitHubRepo("Freddster16", "openpandora"),
     )
@@ -792,4 +860,5 @@ def test_fix_pr_create_pushes_branch_and_creates_pr(monkeypatch, capsys):
         "abc123",
         "https://github.com/Freddster16/openpandora/pull/1",
     ) in calls
+    assert ("switch", "feature/demo") in calls
     assert "Created fix pull request" in output

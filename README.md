@@ -15,17 +15,19 @@ OpenPandora currently includes:
 - an `openpandora test` command for configured project test/lint commands
 - an `openpandora review` command that summarizes checks and command results
 - an `openpandora improve --dry-run` command that explains safe next steps
-- a GitHub Action that runs the local check on pushed branches except `main`
+- a GitHub Action that runs checks on pushed branches with loop protection
 - deterministic checks for missing tests and possible secrets
 - JSON output for automation
 - user-editable learned rules loaded from `.openpandora/rules.json`
 - user-editable config loaded from `.openpandora/config.json`
 - local review without any API key
+- first-run terminal setup for OpenAI auth method, model, and reasoning level
 - optional OpenAI review when `OPENAI_API_KEY` is set
 - optional Anthropic review when `ANTHROPIC_API_KEY` is set
 - optional local/self-hosted review through `OPENPANDORA_LOCAL_COMMAND`
 - safe provider patch application with `openpandora improve --apply`
 - fix branch and pull request creation with `openpandora fix-pr --create`
+- repo-local sleeping Git hooks with `openpandora sleep`
 - a small release zipapp builder
 - a readable curl installer script
 
@@ -63,6 +65,19 @@ Python 3.11 or newer, and writes a small wrapper at:
 ```
 
 The downloaded app is stored under `~/.local/share/openpandora/`.
+
+When run in an interactive terminal, the installer starts first-time setup. To
+skip that prompt in scripts, set:
+
+```bash
+OPENPANDORA_SKIP_SETUP=1
+```
+
+You can run setup later with:
+
+```bash
+openpandora setup
+```
 
 To build that release asset:
 
@@ -135,6 +150,65 @@ openpandora pr-create --since main
 This prints the repository, base branch, head branch, and title. It does not
 contact GitHub unless `--create` is provided. Real PR creation also requires
 `GITHUB_TOKEN`.
+
+## First-Time OpenAI Setup
+
+Run:
+
+```bash
+openpandora setup
+```
+
+The setup wizard uses OpenAI. It asks whether you prefer browser OAuth or an
+API key from the environment, which OpenAI model to call, and how much reasoning
+effort to request. OpenPandora saves only non-secret preferences in the
+per-user config. API keys still live in your shell environment, and OAuth
+tokens are not stored by OpenPandora.
+
+To save choices only for the current project:
+
+```bash
+openpandora setup --project
+```
+
+For non-interactive setup:
+
+```bash
+openpandora providers select openai \
+  --auth-method environment \
+  --model gpt-5-mini \
+  --reasoning medium
+```
+
+For provider reviews and fix patches today, set `OPENAI_API_KEY` in your shell.
+Anthropic and local/self-hosted models are still available through manual
+provider config, but the first-time setup flow stays focused on OpenAI.
+
+## Sleep Until Git Wakes It
+
+Run this inside a Git project:
+
+```bash
+openpandora sleep
+```
+
+OpenPandora installs repo-local `post-commit` and `pre-push` hooks. It does not
+watch the whole computer; Git wakes it only for this repository when a commit or
+push happens from a terminal, IDE, or editor that uses Git.
+
+To let the wake flow create a fix branch and GitHub pull request when it finds
+a safe provider patch:
+
+```bash
+openpandora sleep --create-pr
+```
+
+That path needs OpenAI configured, `OPENAI_API_KEY` for provider patches today,
+and `GITHUB_TOKEN`. If no issue is found, the wake flow prints:
+
+```text
+OpenPandora wake: nothing found.
+```
 
 ## Run Project Tests
 

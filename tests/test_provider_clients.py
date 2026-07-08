@@ -151,6 +151,29 @@ def test_request_openai_review_posts_prompt_without_printing_key():
     assert captured["payload"]["store"] is False
 
 
+def test_request_openai_review_uses_configured_model_and_reasoning():
+    captured = {}
+
+    def fake_opener(request, timeout):
+        captured["payload"] = json.loads(request.data.decode())
+        return FakeResponse({"output_text": "Looks good."})
+
+    review = request_openai_review(
+        "Review this.",
+        model="gpt-5",
+        reasoning="high",
+        environment={
+            "OPENAI_API_KEY": "secret-key",
+            "OPENPANDORA_OPENAI_MODEL": "env-model",
+        },
+        opener=fake_opener,
+    )
+
+    assert review.model == "gpt-5"
+    assert captured["payload"]["model"] == "gpt-5"
+    assert captured["payload"]["reasoning"] == {"effort": "high"}
+
+
 def test_request_openai_review_reads_nested_response_text():
     def fake_opener(request, timeout):
         return FakeResponse(
@@ -219,6 +242,36 @@ def test_request_anthropic_review_posts_expected_payload():
     assert captured["payload"]["max_tokens"] == 1200
 
 
+def test_request_anthropic_review_uses_configured_model():
+    captured = {}
+
+    def fake_opener(request, timeout):
+        captured["payload"] = json.loads(request.data.decode())
+        return FakeResponse(
+            {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Anthropic review.",
+                    }
+                ]
+            }
+        )
+
+    review = request_anthropic_review(
+        "Review this.",
+        model="claude-sonnet-4-5",
+        environment={
+            "ANTHROPIC_API_KEY": "secret-key",
+            "OPENPANDORA_ANTHROPIC_MODEL": "env-model",
+        },
+        opener=fake_opener,
+    )
+
+    assert review.model == "claude-sonnet-4-5"
+    assert captured["payload"]["model"] == "claude-sonnet-4-5"
+
+
 def test_request_provider_fix_supports_anthropic():
     def fake_opener(request, timeout):
         return FakeResponse(
@@ -257,6 +310,8 @@ def test_build_provider_prompt_uses_evidence_without_raw_diff_lines():
     secret_value = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
     request = ReviewRequest(
         provider="openai",
+        model="gpt-5",
+        reasoning="high",
         context=RepoContext(
             branch_name="feature/demo",
             current_commit="abc123def4567890",
@@ -279,6 +334,8 @@ def test_build_provider_prompt_uses_evidence_without_raw_diff_lines():
 
     assert "config.py" in prompt
     assert "Possible secret in code" in prompt
+    assert "Requested model: gpt-5" in prompt
+    assert "Reasoning level: high" in prompt
     assert "failed (1)" in prompt
     assert secret_value not in prompt
 

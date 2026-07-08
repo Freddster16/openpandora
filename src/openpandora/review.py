@@ -18,6 +18,8 @@ class ReviewRequest:
     provider: str
     context: RepoContext
     findings: tuple[Finding, ...]
+    model: str | None = None
+    reasoning: str | None = None
     learned_rules: tuple[LearnedRule, ...] = ()
     command_results: tuple[CommandResult, ...] = ()
     file_context: tuple[FileContext, ...] = ()
@@ -79,6 +81,10 @@ def build_review_report(request: ReviewRequest, result: ReviewResult) -> str:
         f"Branch: {request.context.branch_name}",
         f"Commit: {request.context.current_commit[:12]}",
     ]
+    if request.model:
+        lines.append(f"Model: {request.model}")
+    if request.reasoning:
+        lines.append(f"Reasoning: {request.reasoning}")
     if request.context.base_ref:
         lines.append(f"Compared with: {request.context.base_ref}")
 

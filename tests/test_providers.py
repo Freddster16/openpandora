@@ -6,7 +6,10 @@ from openpandora.project_config import (
 from openpandora.providers import (
     AuthMethod,
     Provider,
+    ReasoningLevel,
+    list_model_options,
     list_provider_setups,
+    list_reasoning_options,
     load_selected_provider,
     select_provider,
 )
@@ -18,6 +21,7 @@ def test_list_provider_setups_marks_api_key_provider_ready_when_env_var_exists()
 
     assert openai_setup.configured is True
     assert openai_setup.env_var == "OPENAI_API_KEY"
+    assert AuthMethod.OAUTH in openai_setup.auth_methods
     assert AuthMethod.ENVIRONMENT in openai_setup.auth_methods
 
 
@@ -59,6 +63,37 @@ def test_select_provider_preserves_configured_commands(tmp_path):
     project_config = load_project_config(tmp_path)
     assert project_config.provider == "anthropic"
     assert project_config.test_command == "pytest -q"
+
+
+def test_select_provider_saves_model_reasoning_and_auth_method(tmp_path):
+    config = select_provider(
+        "openai",
+        tmp_path,
+        auth_method="environment",
+        model="gpt-5",
+        reasoning="high",
+        auto_create_pr=True,
+    )
+
+    project_config = load_project_config(tmp_path)
+
+    assert config.auth_method is AuthMethod.ENVIRONMENT
+    assert config.model == "gpt-5"
+    assert config.reasoning is ReasoningLevel.HIGH
+    assert project_config.auto_create_pr is True
+
+
+def test_list_model_options_includes_provider_defaults():
+    models = list_model_options("openai")
+
+    assert models[0].provider is Provider.OPENAI
+    assert models[0].model == "gpt-5-mini"
+
+
+def test_list_reasoning_options_includes_medium_default_choice():
+    levels = list_reasoning_options()
+
+    assert ReasoningLevel.MEDIUM in {option.level for option in levels}
 
 
 def test_load_selected_provider_returns_none_when_config_is_missing(tmp_path):

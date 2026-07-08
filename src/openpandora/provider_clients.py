@@ -49,12 +49,15 @@ def request_provider_review(
     if request.provider == "openai":
         return request_openai_review(
             build_provider_prompt(request),
+            model=request.model,
+            reasoning=request.reasoning,
             environment=environment,
             opener=opener,
         )
     if request.provider == "anthropic":
         return request_anthropic_review(
             build_provider_prompt(request),
+            model=request.model,
             environment=environment,
             opener=opener,
         )
@@ -73,12 +76,15 @@ def request_provider_fix(
     if request.provider == "openai":
         return request_openai_review(
             build_provider_fix_prompt(request),
+            model=request.model,
+            reasoning=request.reasoning,
             environment=environment,
             opener=opener,
         )
     if request.provider == "anthropic":
         return request_anthropic_review(
             build_provider_fix_prompt(request),
+            model=request.model,
             environment=environment,
             opener=opener,
         )
@@ -95,6 +101,8 @@ def request_provider_fix(
 
 def request_openai_review(
     prompt: str,
+    model: str | None = None,
+    reasoning: str | None = None,
     environment: Mapping[str, str] | None = None,
     opener: Callable[..., Any] | None = None,
 ) -> ProviderReview:
@@ -104,14 +112,19 @@ def request_openai_review(
     if not api_key:
         raise ProviderReviewError("OpenAI is selected, but OPENAI_API_KEY is not set.")
 
-    model = current_environment.get("OPENPANDORA_OPENAI_MODEL", DEFAULT_OPENAI_MODEL)
-    payload = json.dumps(
-        {
-            "model": model,
-            "input": prompt,
-            "store": False,
-        }
-    ).encode()
+    selected_model = (
+        model
+        or current_environment.get("OPENPANDORA_OPENAI_MODEL")
+        or DEFAULT_OPENAI_MODEL
+    )
+    payload_data: dict[str, Any] = {
+        "model": selected_model,
+        "input": prompt,
+        "store": False,
+    }
+    if reasoning:
+        payload_data["reasoning"] = {"effort": reasoning}
+    payload = json.dumps(payload_data).encode()
     request = urllib.request.Request(
         OPENAI_RESPONSES_URL,
         data=payload,
@@ -138,11 +151,12 @@ def request_openai_review(
     if not text:
         raise ProviderReviewError("OpenAI returned no review text.")
 
-    return ProviderReview(provider="openai", model=model, text=text)
+    return ProviderReview(provider="openai", model=selected_model, text=text)
 
 
 def request_anthropic_review(
     prompt: str,
+    model: str | None = None,
     environment: Mapping[str, str] | None = None,
     opener: Callable[..., Any] | None = None,
 ) -> ProviderReview:
@@ -154,13 +168,14 @@ def request_anthropic_review(
             "Anthropic is selected, but ANTHROPIC_API_KEY is not set."
         )
 
-    model = current_environment.get(
-        "OPENPANDORA_ANTHROPIC_MODEL",
-        DEFAULT_ANTHROPIC_MODEL,
+    selected_model = (
+        model
+        or current_environment.get("OPENPANDORA_ANTHROPIC_MODEL")
+        or DEFAULT_ANTHROPIC_MODEL
     )
     payload = json.dumps(
         {
-            "model": model,
+            "model": selected_model,
             "max_tokens": 1200,
             "messages": [{"role": "user", "content": prompt}],
         }
@@ -192,7 +207,7 @@ def request_anthropic_review(
     if not text:
         raise ProviderReviewError("Anthropic returned no review text.")
 
-    return ProviderReview(provider="anthropic", model=model, text=text)
+    return ProviderReview(provider="anthropic", model=selected_model, text=text)
 
 
 def request_local_review(
@@ -231,6 +246,10 @@ def build_provider_prompt(request: ReviewRequest) -> str:
         f"Branch: {request.context.branch_name}",
         f"Commit: {request.context.current_commit[:12]}",
     ]
+    if request.model:
+        lines.append(f"Requested model: {request.model}")
+    if request.reasoning:
+        lines.append(f"Reasoning level: {request.reasoning}")
     if request.context.base_ref:
         lines.append(f"Compared with: {request.context.base_ref}")
 
@@ -282,6 +301,10 @@ def build_provider_fix_prompt(request: ReviewRequest) -> str:
         f"Branch: {request.context.branch_name}",
         f"Commit: {request.context.current_commit[:12]}",
     ]
+    if request.model:
+        lines.append(f"Requested model: {request.model}")
+    if request.reasoning:
+        lines.append(f"Reasoning level: {request.reasoning}")
     if request.context.base_ref:
         lines.append(f"Compared with: {request.context.base_ref}")
 

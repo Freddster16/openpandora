@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -20,6 +22,7 @@ from openpandora.git_changes import (
     is_openpandora_fix_branch,
     plan_fix_attempt,
     push_branch,
+    switch_branch,
 )
 from openpandora.git_context import GitCommandError, collect_repo_context
 from openpandora.github_pull_requests import (
@@ -29,6 +32,7 @@ from openpandora.github_pull_requests import (
     detect_github_repo,
 )
 from openpandora.history import load_history, record_findings, record_fix
+from openpandora.hooks import HookError, install_git_hooks
 from openpandora.improve import build_improve_plan
 from openpandora.learned_rules import LearnedRule, LearnedRulesError, load_learned_rules
 from openpandora.patches import PatchError, apply_unified_diff, extract_unified_diff
@@ -42,6 +46,7 @@ from openpandora.provider_clients import (
 from openpandora.providers import list_provider_setups, select_provider
 from openpandora.pull_requests import build_pr_body
 from openpandora.review import ReviewRequest, build_review, build_review_report
+from openpandora.setup_wizard import safe_run_setup_wizard
 
 
 def run_check(
@@ -163,15 +168,32 @@ def run_providers(
     action: str = "list",
     provider_name: str | None = None,
     repo_path: str | Path = ".",
+    auth_method: str | None = None,
+    model: str | None = None,
+    reasoning: str | None = None,
+    global_config: bool = False,
 ) -> int:
     """Show provider auth options without exposing secret values."""
     if action == "select":
         if provider_name is None:
             print("Choose a provider: openai, anthropic, or local.")
             return 1
-        provider_config = select_provider(provider_name, repo_path)
+        provider_config = select_provider(
+            provider_name,
+            repo_path,
+            auth_method=auth_method,
+            model=model,
+            reasoning=reasoning,
+            global_config=global_config,
+        )
         print(f"Selected {provider_config.provider} for AI review.")
         print(f"Saved choice to {provider_config.config_path}.")
+        if provider_config.auth_method:
+            print(f"Auth method: {provider_config.auth_method}")
+        if provider_config.model:
+            print(f"Model: {provider_config.model}")
+        if provider_config.reasoning:
+            print(f"Reasoning: {provider_config.reasoning}")
         print("OpenPandora did not store any API keys.")
         return 0
 
@@ -185,6 +207,73 @@ def run_providers(
         print(f"  Auth methods: {methods}")
         print(f"  {setup.note}")
     return 0
+
+
+def run_setup(repo_path: str | Path = ".", global_config: bool = True) -> int:
+    """Run first-time terminal setup."""
+    result = safe_run_setup_wizard(repo_path, global_config=global_config)
+    return 0 if result else 1
+
+
+def run_sleep(repo_path: str | Path = ".", create_pr: bool = False) -> int:
+    """Install Git hooks that wake OpenPandora only for this repository."""
+    try:
+        config = load_project_config(repo_path)
+        result = install_git_hooks(
+            repo_path,
+            create_pr=create_pr or config.auto_create_pr,
+        )
+    except (HookError, ProjectConfigError) as error:
+        _print_check_error(error)
+        return 1
+
+    print("OpenPandora is sleeping for this Git repo.")
+    print("It will wake on Git commit and push events from your terminal or IDE.")
+    print(f"Hooks installed in {result.hooks_dir}.")
+    if result.create_pr:
+        print("When it finds a safe fix, it will try to create a branch and PR.")
+    else:
+        print("Automatic PR creation is off. Use --create-pr to enable it.")
+    return 0
+
+
+def run_wake(
+    repo_path: str | Path = ".",
+    event: str = "manual",
+    since_ref: str | None = None,
+    create_pr: bool = False,
+    stdin_text: str | None = None,
+) -> int:
+    """Wake from a Git hook, check the change, and optionally open a fix PR."""
+    try:
+        config = load_project_config(repo_path)
+        compare_ref = since_ref or _wake_compare_ref(
+            event,
+            repo_path,
+            config.base_ref,
+            stdin_text,
+        )
+        request = _build_review_request(repo_path, compare_ref)
+    except (GitCommandError, LearnedRulesError, ProjectConfigError) as error:
+        _print_check_error(error)
+        return 1
+
+    review_result = build_review(request)
+    print(f"OpenPandora woke up for {event}.")
+    if compare_ref:
+        print(f"Compared with: {compare_ref}")
+
+    if not review_result.has_issues:
+        print("OpenPandora wake: nothing found.")
+        return 0
+
+    should_create_pr = create_pr or config.auto_create_pr
+    if not should_create_pr:
+        print("OpenPandora found something to review.")
+        print("Run openpandora review for details, or wake with --create-pr.")
+        return 1
+
+    return run_fix_pr(repo_path, since_ref=compare_ref, create=True)
 
 
 def run_pr_body(repo_path: str | Path = ".", since_ref: str | None = None) -> int:
@@ -463,6 +552,7 @@ def run_fix_pr(
             commit_hash=commit_hash,
             pull_request_url=result.url,
         )
+        switch_branch(source_branch, repo_path)
     except (GitChangeError, GitHubPullRequestError) as error:
         _print_check_error(error)
         return 1
@@ -540,6 +630,8 @@ def _build_review_request(
     )
     return ReviewRequest(
         provider=config.provider or "local",
+        model=config.model,
+        reasoning=config.reasoning,
         context=context,
         findings=findings,
         learned_rules=learned_rules,
@@ -567,6 +659,51 @@ def _trim_command_output(stdout: str, stderr: str, max_characters: int = 1800) -
     if len(output) <= max_characters:
         return output
     return output[:max_characters].rstrip() + "\n... output truncated ..."
+
+
+def _wake_compare_ref(
+    event: str,
+    repo_path: str | Path,
+    default_ref: str,
+    stdin_text: str | None,
+) -> str | None:
+    if event == "push":
+        hook_input = stdin_text
+        if hook_input is None and not sys.stdin.isatty():
+            hook_input = sys.stdin.read()
+        return (
+            _pre_push_compare_ref(hook_input or "")
+            or _existing_ref("HEAD~1", repo_path)
+            or default_ref
+        )
+    if event == "commit":
+        return _existing_ref("HEAD~1", repo_path) or default_ref
+    return default_ref
+
+
+def _pre_push_compare_ref(hook_input: str) -> str | None:
+    zero_sha = "0" * 40
+    for line in hook_input.splitlines():
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        remote_sha = parts[3]
+        if remote_sha and remote_sha != zero_sha:
+            return remote_sha
+    return None
+
+
+def _existing_ref(ref: str, repo_path: str | Path) -> str | None:
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", ref],
+        cwd=Path(repo_path),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode == 0:
+        return ref
+    return None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -615,7 +752,80 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("openai", "anthropic", "local"),
         help="Provider to select.",
     )
+    providers_parser.add_argument(
+        "--auth-method",
+        choices=("oauth", "environment", "none"),
+        help="Auth method to save without storing credentials.",
+    )
+    providers_parser.add_argument(
+        "--model",
+        help="Model id to save for provider calls.",
+    )
+    providers_parser.add_argument(
+        "--reasoning",
+        choices=("low", "medium", "high"),
+        help="Reasoning level to save for provider calls.",
+    )
+    providers_parser.add_argument(
+        "--global",
+        dest="global_config",
+        action="store_true",
+        help="Save the provider choice to the per-user config.",
+    )
     providers_parser.set_defaults(command_handler=run_providers)
+
+    setup_parser = subparsers.add_parser(
+        "setup",
+        help="Run first-time provider, model, and reasoning setup.",
+    )
+    setup_scope = setup_parser.add_mutually_exclusive_group()
+    setup_scope.add_argument(
+        "--global",
+        dest="global_config",
+        action="store_true",
+        default=True,
+        help="Save setup to the per-user config.",
+    )
+    setup_scope.add_argument(
+        "--project",
+        dest="global_config",
+        action="store_false",
+        help="Save setup to this project's .openpandora/config.json.",
+    )
+    setup_parser.set_defaults(command_handler=run_setup)
+
+    sleep_parser = subparsers.add_parser(
+        "sleep",
+        help="Install Git hooks so OpenPandora wakes on commit and push.",
+    )
+    sleep_parser.add_argument(
+        "--create-pr",
+        action="store_true",
+        help="Let wake hooks create fix branches and pull requests.",
+    )
+    sleep_parser.set_defaults(command_handler=run_sleep)
+
+    wake_parser = subparsers.add_parser(
+        "wake",
+        help="Run the QA wake flow used by OpenPandora Git hooks.",
+    )
+    wake_parser.add_argument(
+        "--event",
+        choices=("manual", "commit", "push"),
+        default="manual",
+        help="Git event that woke OpenPandora.",
+    )
+    wake_parser.add_argument(
+        "--since",
+        metavar="REF",
+        help="Compare changes against a specific ref.",
+    )
+    wake_parser.add_argument(
+        "--create-pr",
+        action="store_true",
+        help="Create a fix branch and GitHub PR when a safe patch is available.",
+    )
+    wake_parser.set_defaults(command_handler=run_wake)
 
     pr_body_parser = subparsers.add_parser(
         "pr-body",
@@ -721,7 +931,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "check":
         return args.command_handler(json_output=args.json, since_ref=args.since)
     if args.command == "providers":
-        return args.command_handler(action=args.action, provider_name=args.provider)
+        return args.command_handler(
+            action=args.action,
+            provider_name=args.provider,
+            auth_method=args.auth_method,
+            model=args.model,
+            reasoning=args.reasoning,
+            global_config=args.global_config,
+        )
+    if args.command == "setup":
+        return args.command_handler(global_config=args.global_config)
+    if args.command == "sleep":
+        return args.command_handler(create_pr=args.create_pr)
+    if args.command == "wake":
+        return args.command_handler(
+            event=args.event,
+            since_ref=args.since,
+            create_pr=args.create_pr,
+        )
     if args.command == "pr-body":
         return args.command_handler(since_ref=args.since)
     if args.command == "pr-create":
