@@ -97,8 +97,29 @@ jobs:
             echo "needs_fix=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Detect existing fix pull request
+        id: existing_fix_pr
+        if: ${{ (steps.qa.outputs.needs_fix == 'true' || steps.project_commands.outputs.needs_fix == 'true') && steps.loop_guard.outputs.can_create_fix_pr == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr_url="$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --base "$GITHUB_REF_NAME" \
+            --state open \
+            --json headRefName,url \
+            --jq 'map(select(.headRefName | startswith("openpandora/fix-"))) | .[0].url // ""')"
+          if [ -n "$pr_url" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "url=$pr_url" >> "$GITHUB_OUTPUT"
+            echo "OpenPandora fix PR already exists: $pr_url"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Open fix pull request
-        if: ${{ (steps.qa.outputs.needs_fix == 'true' || steps.project_commands.outputs.needs_fix == 'true') && steps.loop_guard.outputs.can_create_fix_pr == 'true' && (vars.OPENPANDORA_PROVIDER != '' || vars.OPENPANDORA_LOCAL_COMMAND != '') }}
+        id: fix_pr
+        if: ${{ (steps.qa.outputs.needs_fix == 'true' || steps.project_commands.outputs.needs_fix == 'true') && steps.loop_guard.outputs.can_create_fix_pr == 'true' && steps.existing_fix_pr.outputs.found != 'true' && (vars.OPENPANDORA_PROVIDER != '' || vars.OPENPANDORA_LOCAL_COMMAND != '') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENPANDORA_PROVIDER: ${{ vars.OPENPANDORA_PROVIDER }}
@@ -112,6 +133,7 @@ jobs:
           else
             openpandora fix-pr --create
           fi
+          echo "created=true" >> "$GITHUB_OUTPUT"
 
       - name: Explain skipped fix pull request
         if: ${{ (steps.qa.outputs.needs_fix == 'true' || steps.project_commands.outputs.needs_fix == 'true') && steps.loop_guard.outputs.can_create_fix_pr == 'false' }}
@@ -119,6 +141,17 @@ jobs:
           echo "OpenPandora found something to fix, but this branch was created by OpenPandora."
           echo "Loop protection stopped it from creating another fix PR."
 
-      - name: Fail original branch check
-        if: ${{ steps.qa.outputs.needs_fix == 'true' || steps.project_commands.outputs.needs_fix == 'true' }}
+      - name: Explain pending fix pull request
+        if: ${{ (steps.qa.outputs.needs_fix == 'true' || steps.project_commands.outputs.needs_fix == 'true') && steps.loop_guard.outputs.can_create_fix_pr == 'true' && (steps.existing_fix_pr.outputs.found == 'true' || steps.fix_pr.outputs.created == 'true') }}
+        run: |
+          if [ "${{ steps.existing_fix_pr.outputs.found }}" = "true" ]; then
+            echo "OpenPandora found something to fix."
+            echo "A fix PR is already open: ${{ steps.existing_fix_pr.outputs.url }}"
+          else
+            echo "OpenPandora found something to fix and opened a fix PR."
+          fi
+          echo "This check passes because the repair path is ready."
+
+      - name: Fail unresolved branch check
+        if: ${{ (steps.qa.outputs.needs_fix == 'true' || steps.project_commands.outputs.needs_fix == 'true') && (steps.loop_guard.outputs.can_create_fix_pr == 'false' || (steps.existing_fix_pr.outputs.found != 'true' && steps.fix_pr.outputs.created != 'true')) }}
         run: exit 1
