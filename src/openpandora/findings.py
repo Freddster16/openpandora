@@ -45,7 +45,8 @@ class Finding:
 
 def finding_label(finding: Finding) -> str:
     """Return a short label that includes location when available."""
+    title = finding.title
     location = finding.location
     if location is None:
-        return finding.title
-    return f"{finding.title} ({location})"
+        return title
+    return f"{title} ({location})"
