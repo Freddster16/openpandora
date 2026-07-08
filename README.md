@@ -14,6 +14,8 @@ The installer downloads the latest `openpandora.pyz`, installs the
 `openpandora` command to `~/.local/bin`, and starts setup in interactive
 terminals.
 
+Run install or setup from inside the Git repo you want OpenPandora to arm.
+
 If the command is not found after install, add this to your shell:
 
 ```bash
@@ -40,17 +42,12 @@ restarts. To change the model, reasoning level, or auth method later:
 openpandora setup
 ```
 
-## Sleep Mode
+## Asleep By Default
 
-Run this inside a Git repo:
-
-```bash
-openpandora sleep --create-pr
-```
-
-OpenPandora installs repo-local Git hooks. It stays quiet until a commit or push
-wakes it. If it finds a safe fix, it creates a branch and GitHub PR. If it finds
-nothing, it prints:
+When setup runs inside a Git repo, OpenPandora installs repo-local wake hooks
+automatically. It does not run in the background; it stays quiet until a commit
+or push wakes it. If it finds a safe fix, it creates a branch and GitHub PR. If
+it finds nothing, it prints:
 
 ```text
 OpenPandora wake: nothing found.
@@ -58,6 +55,8 @@ OpenPandora wake: nothing found.
 
 PR creation needs `GITHUB_TOKEN`. API key auth also needs `OPENAI_API_KEY`.
 OpenAI account auth uses your saved Codex ChatGPT login.
+
+To arm another repo later, run `openpandora setup` from inside that repo.
 
 ## Useful Commands
 

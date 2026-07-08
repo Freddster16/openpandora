@@ -74,9 +74,16 @@ def run_setup_wizard(
     existing_config = load_project_config(repo_path)
     if skip_existing and not reset and _is_complete_openai_setup(existing_config):
         config_path = _setup_config_path(repo_path, global_config)
+        hooks = _install_sleeping_hooks_if_possible(
+            repo_path,
+            existing_config.auto_create_pr,
+            output_func,
+        )
         output_func("OpenPandora is already set up for OpenAI.")
         output_func(f"Using saved setup from {config_path}.")
         output_func("Run openpandora setup to change it.")
+        if hooks:
+            output_func(f"OpenPandora is asleep for this Git repo: {hooks.hooks_dir}.")
         return SetupResult(
             provider="openai",
             auth_method=existing_config.auth_method or "",
@@ -86,6 +93,7 @@ def run_setup_wizard(
             global_config=global_config,
             auto_create_pr=existing_config.auto_create_pr,
             already_configured=True,
+            hooks=hooks,
         )
 
     provider_setup = _openai_provider_setup(output_func)
@@ -114,14 +122,11 @@ def run_setup_wizard(
         global_config=global_config,
     )
 
-    hooks = None
-    if is_git_repo(repo_path) and _ask_yes_no(
-        "Put OpenPandora to sleep for this Git repo now?",
-        default=False,
-        input_func=input_func,
-        output_func=output_func,
-    ):
-        hooks = install_git_hooks(repo_path, create_pr=auto_create_pr)
+    hooks = _install_sleeping_hooks_if_possible(
+        repo_path,
+        auto_create_pr,
+        output_func,
+    )
 
     output_func("")
     output_func(f"Saved setup to {provider_config.config_path}.")
@@ -130,7 +135,7 @@ def run_setup_wizard(
     if auto_create_pr:
         output_func("Automatic PR creation also needs GITHUB_TOKEN when it wakes.")
     if hooks:
-        output_func(f"Installed sleeping Git hooks in {hooks.hooks_dir}.")
+        output_func(f"OpenPandora is asleep for this Git repo: {hooks.hooks_dir}.")
 
     return SetupResult(
         provider=provider_setup.provider.value,
@@ -167,6 +172,22 @@ def _setup_config_path(repo_path: str | Path, global_config: bool) -> Path:
     if global_config:
         return global_config_path()
     return Path(repo_path) / CONFIG_FILE
+
+
+def _install_sleeping_hooks_if_possible(
+    repo_path: str | Path,
+    create_pr: bool,
+    output_func: OutputFunc,
+) -> HookInstallResult | None:
+    if not is_git_repo(repo_path):
+        return None
+
+    try:
+        return install_git_hooks(repo_path, create_pr=create_pr)
+    except HookError as error:
+        output_func("OpenPandora could not go asleep for this repo.")
+        output_func(str(error))
+        return None
 
 
 def _choose_auth_method(
