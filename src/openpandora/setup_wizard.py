@@ -62,6 +62,7 @@ def run_setup_wizard(
     *,
     global_config: bool = True,
     reset: bool = False,
+    skip_existing: bool = False,
     input_func: InputFunc = input,
     output_func: OutputFunc = print,
     account_auth_func: AccountAuthFunc = ensure_openai_account_auth,
@@ -71,11 +72,11 @@ def run_setup_wizard(
     output_func("")
 
     existing_config = load_project_config(repo_path)
-    if not reset and _is_complete_openai_setup(existing_config):
+    if skip_existing and not reset and _is_complete_openai_setup(existing_config):
         config_path = _setup_config_path(repo_path, global_config)
         output_func("OpenPandora is already set up for OpenAI.")
         output_func(f"Using saved setup from {config_path}.")
-        output_func("Run openpandora setup --reset to change it.")
+        output_func("Run openpandora setup to change it.")
         return SetupResult(
             provider="openai",
             auth_method=existing_config.auth_method or "",
@@ -298,6 +299,7 @@ def safe_run_setup_wizard(
     *,
     global_config: bool = True,
     reset: bool = False,
+    skip_existing: bool = False,
     input_func: InputFunc = input,
     output_func: OutputFunc = print,
 ) -> SetupResult | None:
@@ -307,6 +309,7 @@ def safe_run_setup_wizard(
             repo_path,
             global_config=global_config,
             reset=reset,
+            skip_existing=skip_existing,
             input_func=input_func,
             output_func=output_func,
         )

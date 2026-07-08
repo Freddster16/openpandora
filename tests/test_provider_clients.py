@@ -154,6 +154,18 @@ def test_request_openai_account_review_uses_codex_without_api_key():
     assert not captured["output_path"].exists()
 
 
+def test_request_openai_account_review_missing_codex_points_to_setup():
+    def missing_runner(arguments, **kwargs):
+        raise FileNotFoundError
+
+    with pytest.raises(ProviderReviewError, match="openpandora setup"):
+        request_openai_account_review(
+            "Review this.",
+            environment={"OPENPANDORA_CODEX_COMMAND": "missing-codex"},
+            runner=missing_runner,
+        )
+
+
 def test_request_provider_review_uses_account_auth_when_oauth_is_selected(
     monkeypatch,
 ):

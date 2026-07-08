@@ -213,12 +213,14 @@ def run_setup(
     repo_path: str | Path = ".",
     global_config: bool = True,
     reset: bool = False,
+    if_needed: bool = False,
 ) -> int:
     """Run first-time terminal setup."""
     result = safe_run_setup_wizard(
         repo_path,
         global_config=global_config,
         reset=reset,
+        skip_existing=if_needed,
     )
     return 0 if result else 1
 
@@ -785,7 +787,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     setup_parser = subparsers.add_parser(
         "setup",
-        help="Run first-time provider, model, and reasoning setup.",
+        help="Set or change provider, model, and reasoning setup.",
     )
     setup_scope = setup_parser.add_mutually_exclusive_group()
     setup_scope.add_argument(
@@ -804,7 +806,12 @@ def build_parser() -> argparse.ArgumentParser:
     setup_parser.add_argument(
         "--reset",
         action="store_true",
-        help="Ask setup questions again and replace the saved OpenAI setup.",
+        help="Ask setup questions again. Plain 'openpandora setup' does this too.",
+    )
+    setup_parser.add_argument(
+        "--if-needed",
+        action="store_true",
+        help="Skip setup when a complete OpenAI setup is already saved.",
     )
     setup_parser.set_defaults(command_handler=run_setup)
 
@@ -954,7 +961,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             global_config=args.global_config,
         )
     if args.command == "setup":
-        return args.command_handler(global_config=args.global_config, reset=args.reset)
+        return args.command_handler(
+            global_config=args.global_config,
+            reset=args.reset,
+            if_needed=args.if_needed,
+        )
     if args.command == "sleep":
         return args.command_handler(create_pr=args.create_pr)
     if args.command == "wake":

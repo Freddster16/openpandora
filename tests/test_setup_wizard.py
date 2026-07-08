@@ -8,7 +8,7 @@ from openpandora.project_config import (
 from openpandora.setup_wizard import run_setup_wizard
 
 
-def test_setup_wizard_skips_when_openai_setup_is_already_saved(tmp_path):
+def test_setup_wizard_if_needed_skips_when_openai_setup_is_already_saved(tmp_path):
     write_global_config(
         ProjectConfig(
             provider="openai",
@@ -24,6 +24,7 @@ def test_setup_wizard_skips_when_openai_setup_is_already_saved(tmp_path):
 
     result = run_setup_wizard(
         tmp_path,
+        skip_existing=True,
         input_func=fail_input,
         output_func=output.append,
     )
@@ -32,7 +33,35 @@ def test_setup_wizard_skips_when_openai_setup_is_already_saved(tmp_path):
     assert result.provider == "openai"
     assert result.model == "gpt-5-mini"
     assert "already set up" in "\n".join(output)
-    assert "--reset" in "\n".join(output)
+    assert "openpandora setup to change it" in "\n".join(output)
+
+
+def test_setup_wizard_reopens_saved_setup_by_default(tmp_path):
+    write_global_config(
+        ProjectConfig(
+            provider="openai",
+            auth_method="environment",
+            model="gpt-5-mini",
+            reasoning="medium",
+        )
+    )
+    inputs = iter(["2", "2", "3", "n"])
+    output = []
+
+    result = run_setup_wizard(
+        tmp_path,
+        input_func=lambda prompt: next(inputs),
+        output_func=output.append,
+    )
+
+    config = load_project_config(tmp_path)
+
+    assert result.already_configured is False
+    assert result.model == "gpt-5"
+    assert result.reasoning == "high"
+    assert config.model == "gpt-5"
+    assert config.reasoning == "high"
+    assert "already set up" not in "\n".join(output)
 
 
 def test_setup_wizard_saves_provider_model_reasoning_without_secrets(tmp_path):

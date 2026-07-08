@@ -463,6 +463,28 @@ def test_providers_select_command_requires_provider(capsys):
     assert "Choose a provider" in output
 
 
+@pytest.mark.parametrize(
+    ("arguments", "expected_if_needed"),
+    ((["setup"], False), (["setup", "--if-needed"], True)),
+)
+def test_setup_command_forwards_if_needed(arguments, expected_if_needed, monkeypatch):
+    captured = {}
+
+    def fake_setup_wizard(repo_path=".", **kwargs):
+        captured["repo_path"] = repo_path
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(cli, "safe_run_setup_wizard", fake_setup_wizard)
+
+    assert main(arguments) == 0
+
+    assert captured["repo_path"] == "."
+    assert captured["global_config"] is True
+    assert captured["reset"] is False
+    assert captured["skip_existing"] is expected_if_needed
+
+
 def test_pr_body_command_prints_summary(monkeypatch, capsys):
     context = RepoContext(
         branch_name="feature/demo",

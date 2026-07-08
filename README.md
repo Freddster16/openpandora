@@ -34,10 +34,10 @@ Setup asks for:
 - whether wake mode should create fix PRs
 
 OpenPandora saves only non-secret preferences and remembers them after computer
-restarts. To change setup later:
+restarts. To change the model, reasoning level, or auth method later:
 
 ```bash
-openpandora setup --reset
+openpandora setup
 ```
 
 ## Sleep Mode

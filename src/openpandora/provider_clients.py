@@ -208,8 +208,8 @@ def request_openai_account_review(
             )
         except FileNotFoundError as error:
             raise ProviderReviewError(
-                "OpenAI account auth needs the Codex CLI. Run 'openpandora setup "
-                "--reset' and choose API key auth, or install Codex and sign in."
+                "OpenAI account auth needs the Codex CLI. Run 'openpandora setup' "
+                "and choose API key auth, or install Codex and sign in."
             ) from error
         except subprocess.TimeoutExpired as error:
             raise ProviderReviewError("OpenAI account review timed out.") from error
