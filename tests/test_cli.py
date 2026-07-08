@@ -1012,7 +1012,7 @@ def test_fix_pr_create_pushes_branch_and_creates_pr(monkeypatch, capsys):
         cli,
         "create_pull_request",
         lambda plan: (
-            calls.append(("pr", plan.head, plan.base))
+            calls.append(("pr", plan.head, plan.base, plan.body))
             or PullRequestResult("https://github.com/Freddster16/openpandora/pull/1")
         ),
     )
@@ -1036,7 +1036,9 @@ def test_fix_pr_create_pushes_branch_and_creates_pr(monkeypatch, capsys):
     assert ("branch", "openpandora/fix-feature-demo") in calls
     assert ("apply", False) in calls
     assert ("push", "openpandora/fix-feature-demo") in calls
-    assert ("pr", "openpandora/fix-feature-demo", "feature/demo") in calls
+    pr_call = next(call for call in calls if call[0] == "pr")
+    assert pr_call[:3] == ("pr", "openpandora/fix-feature-demo", "feature/demo")
+    assert "This PR contains OpenPandora's proposed fix" in pr_call[3]
     assert (
         "record_fix",
         "openpandora/fix-feature-demo",

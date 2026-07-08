@@ -11,6 +11,8 @@ def build_pr_body(
     context: RepoContext,
     findings: tuple[Finding, ...],
     learned_rules: tuple[LearnedRule, ...] = (),
+    *,
+    contains_fix: bool = False,
 ) -> str:
     """Build a PR/comment body without creating anything on GitHub."""
     lines = [
@@ -44,10 +46,11 @@ def build_pr_body(
             if finding.suggestion:
                 lines.append(f"  - Suggestion: {finding.suggestion}")
 
-    lines.extend(
-        [
-            "",
-            "OpenPandora has not changed any files or opened a fix PR yet.",
-        ]
-    )
+    lines.append("")
+    if contains_fix:
+        lines.append(
+            "This PR contains OpenPandora's proposed fix. Review it before merging."
+        )
+    else:
+        lines.append("OpenPandora has not changed any files or opened a fix PR yet.")
     return "\n".join(lines) + "\n"

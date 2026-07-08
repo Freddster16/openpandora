@@ -655,7 +655,12 @@ def run_fix_pr(
         commit_hash = commit_all_changes("fix: address OpenPandora QA", repo_path)
         push_branch(fix_branch, repo_path)
         repo = detect_github_repo(repo_path)
-        body = build_pr_body(request.context, request.findings, request.learned_rules)
+        body = build_pr_body(
+            request.context,
+            request.findings,
+            request.learned_rules,
+            contains_fix=True,
+        )
         plan = build_pull_request_plan(
             repo=repo,
             title=f"fix: address OpenPandora QA for {source_branch}",
