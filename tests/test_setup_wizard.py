@@ -1,5 +1,3 @@
-import subprocess
-
 from openpandora.project_config import (
     ProjectConfig,
     load_project_config,
@@ -9,7 +7,6 @@ from openpandora.setup_wizard import run_setup_wizard
 
 
 def test_setup_wizard_if_needed_skips_when_openai_setup_is_already_saved(tmp_path):
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
     write_global_config(
         ProjectConfig(
             provider="openai",
@@ -37,7 +34,7 @@ def test_setup_wizard_if_needed_skips_when_openai_setup_is_already_saved(tmp_pat
     assert result.hooks.post_commit_hook.exists()
     assert "already set up" in "\n".join(output)
     assert "openpandora setup to change it" in "\n".join(output)
-    assert "asleep for this Git repo" in "\n".join(output)
+    assert "asleep for all Git repos" in "\n".join(output)
 
 
 def test_setup_wizard_reopens_saved_setup_by_default(tmp_path):
@@ -117,8 +114,7 @@ def test_setup_wizard_runs_openai_account_auth_for_oauth(tmp_path):
     assert "OPENAI_API_KEY" not in output_text
 
 
-def test_setup_wizard_can_install_sleeping_hooks(tmp_path):
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+def test_setup_wizard_can_install_computer_wide_sleeping_hooks(tmp_path):
     inputs = iter(["2", "", "", "n"])
     output = []
 
@@ -132,4 +128,4 @@ def test_setup_wizard_can_install_sleeping_hooks(tmp_path):
     assert result.hooks is not None
     assert result.hooks.post_commit_hook.exists()
     assert result.hooks.pre_push_hook.exists()
-    assert "asleep for this Git repo" in "\n".join(output)
+    assert "asleep for all Git repos" in "\n".join(output)

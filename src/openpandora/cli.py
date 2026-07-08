@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -32,7 +33,7 @@ from openpandora.github_pull_requests import (
     detect_github_repo,
 )
 from openpandora.history import load_history, record_findings, record_fix
-from openpandora.hooks import HookError, install_git_hooks
+from openpandora.hooks import HOOK_COMMAND_ENV_VAR, HookError, install_git_hooks
 from openpandora.improve import build_improve_plan
 from openpandora.learned_rules import (
     LearnedRule,
@@ -266,8 +267,13 @@ def run_setup(
         global_config=global_config,
         reset=reset,
         skip_existing=if_needed,
+        executable=_setup_executable(),
     )
     return 0 if result else 1
+
+
+def _setup_executable() -> str:
+    return os.environ.get(HOOK_COMMAND_ENV_VAR) or "openpandora"
 
 
 def run_learn(

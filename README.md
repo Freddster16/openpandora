@@ -1,8 +1,8 @@
 # OpenPandora
 
 OpenPandora is a sleeping QA agent for Git projects. Install it once, choose
-OpenAI auth, model, and reasoning level, then let Git wake it on commits or
-pushes.
+OpenAI auth, model, and reasoning level, then Git can wake it from any repo on
+your computer.
 
 ## Install
 
@@ -11,10 +11,8 @@ curl -fsSL https://raw.githubusercontent.com/Freddster16/openpandora/main/instal
 ```
 
 The installer downloads the latest `openpandora.pyz`, installs the
-`openpandora` command to `~/.local/bin`, and starts setup in interactive
-terminals.
-
-Run install or setup from inside the Git repo you want OpenPandora to arm.
+`openpandora` command to `~/.local/bin`, starts setup, and installs
+computer-wide Git wake hooks.
 
 If the command is not found after install, add this to your shell:
 
@@ -44,10 +42,10 @@ openpandora setup
 
 ## Asleep By Default
 
-When setup runs inside a Git repo, OpenPandora installs repo-local wake hooks
-automatically. It does not run in the background; it stays quiet until a commit
-or push wakes it. If it finds a safe fix, it creates a branch and GitHub PR. If
-it finds nothing, it prints:
+Setup installs one global Git hooks path for this computer. OpenPandora does not
+run in the background; it stays quiet until a commit or push from any repo wakes
+it. If it finds a safe fix, it creates a branch and GitHub PR. If it finds
+nothing, it prints:
 
 ```text
 OpenPandora wake: nothing found.
@@ -55,8 +53,6 @@ OpenPandora wake: nothing found.
 
 PR creation needs `GITHUB_TOKEN`. API key auth also needs `OPENAI_API_KEY`.
 OpenAI account auth uses your saved Codex ChatGPT login.
-
-To arm another repo later, run `openpandora setup` from inside that repo.
 
 ## Learning
 

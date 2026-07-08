@@ -22,7 +22,12 @@ def test_install_script_downloads_latest_release_asset():
     assert "curl" in script
     assert "wget" in script
     assert "OPENPANDORA_SKIP_SETUP" in script
+    assert 'export OPENPANDORA_HOOK_COMMAND="$target"' in script
     assert "/dev/tty" in script
+    assert (
+        'OPENPANDORA_HOOK_COMMAND="$target" "$target" setup --global --if-needed'
+        in script
+    )
     assert '"$target" setup --global --if-needed' in script
     assert '"$target" setup --global --if-needed < /dev/tty' in script
     assert 'exec "$python_cmd" "$app_file" "\\$@"' in script

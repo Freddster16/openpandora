@@ -587,6 +587,7 @@ def test_learn_command_parses_cli_arguments(monkeypatch):
 )
 def test_setup_command_forwards_if_needed(arguments, expected_if_needed, monkeypatch):
     captured = {}
+    monkeypatch.setenv("OPENPANDORA_HOOK_COMMAND", "/tmp/openpandora")
 
     def fake_setup_wizard(repo_path=".", **kwargs):
         captured["repo_path"] = repo_path
@@ -601,6 +602,7 @@ def test_setup_command_forwards_if_needed(arguments, expected_if_needed, monkeyp
     assert captured["global_config"] is True
     assert captured["reset"] is False
     assert captured["skip_existing"] is expected_if_needed
+    assert captured["executable"] == "/tmp/openpandora"
 
 
 def test_pr_body_command_prints_summary(monkeypatch, capsys):

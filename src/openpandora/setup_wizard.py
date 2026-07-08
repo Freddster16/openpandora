@@ -8,10 +8,9 @@ from pathlib import Path
 from typing import TypeVar
 
 from openpandora.hooks import (
+    GlobalHookInstallResult,
     HookError,
-    HookInstallResult,
-    install_git_hooks,
-    is_git_repo,
+    install_global_git_hooks,
 )
 from openpandora.openai_account import (
     OpenAIAccountAuthError,
@@ -54,7 +53,7 @@ class SetupResult:
     global_config: bool
     auto_create_pr: bool
     already_configured: bool = False
-    hooks: HookInstallResult | None = None
+    hooks: GlobalHookInstallResult | None = None
 
 
 def run_setup_wizard(
@@ -66,6 +65,7 @@ def run_setup_wizard(
     input_func: InputFunc = input,
     output_func: OutputFunc = print,
     account_auth_func: AccountAuthFunc = ensure_openai_account_auth,
+    executable: str = "openpandora",
 ) -> SetupResult:
     """Ask first-run setup questions in a small terminal UI."""
     output_func("OpenPandora setup")
@@ -74,16 +74,18 @@ def run_setup_wizard(
     existing_config = load_project_config(repo_path)
     if skip_existing and not reset and _is_complete_openai_setup(existing_config):
         config_path = _setup_config_path(repo_path, global_config)
-        hooks = _install_sleeping_hooks_if_possible(
-            repo_path,
-            existing_config.auto_create_pr,
+        hooks = _install_global_hooks_if_possible(
+            executable,
             output_func,
         )
         output_func("OpenPandora is already set up for OpenAI.")
         output_func(f"Using saved setup from {config_path}.")
         output_func("Run openpandora setup to change it.")
         if hooks:
-            output_func(f"OpenPandora is asleep for this Git repo: {hooks.hooks_dir}.")
+            output_func(
+                "OpenPandora is asleep for all Git repos on this computer: "
+                f"{hooks.hooks_dir}."
+            )
         return SetupResult(
             provider="openai",
             auth_method=existing_config.auth_method or "",
@@ -122,9 +124,8 @@ def run_setup_wizard(
         global_config=global_config,
     )
 
-    hooks = _install_sleeping_hooks_if_possible(
-        repo_path,
-        auto_create_pr,
+    hooks = _install_global_hooks_if_possible(
+        executable,
         output_func,
     )
 
@@ -135,7 +136,10 @@ def run_setup_wizard(
     if auto_create_pr:
         output_func("Automatic PR creation also needs GITHUB_TOKEN when it wakes.")
     if hooks:
-        output_func(f"OpenPandora is asleep for this Git repo: {hooks.hooks_dir}.")
+        output_func(
+            "OpenPandora is asleep for all Git repos on this computer: "
+            f"{hooks.hooks_dir}."
+        )
 
     return SetupResult(
         provider=provider_setup.provider.value,
@@ -174,18 +178,14 @@ def _setup_config_path(repo_path: str | Path, global_config: bool) -> Path:
     return Path(repo_path) / CONFIG_FILE
 
 
-def _install_sleeping_hooks_if_possible(
-    repo_path: str | Path,
-    create_pr: bool,
+def _install_global_hooks_if_possible(
+    executable: str,
     output_func: OutputFunc,
-) -> HookInstallResult | None:
-    if not is_git_repo(repo_path):
-        return None
-
+) -> GlobalHookInstallResult | None:
     try:
-        return install_git_hooks(repo_path, create_pr=create_pr)
+        return install_global_git_hooks(executable=executable)
     except HookError as error:
-        output_func("OpenPandora could not go asleep for this repo.")
+        output_func("OpenPandora could not install computer-wide Git hooks.")
         output_func(str(error))
         return None
 
@@ -323,6 +323,7 @@ def safe_run_setup_wizard(
     skip_existing: bool = False,
     input_func: InputFunc = input,
     output_func: OutputFunc = print,
+    executable: str = "openpandora",
 ) -> SetupResult | None:
     """Run setup and turn hook installation conflicts into readable output."""
     try:
@@ -333,6 +334,7 @@ def safe_run_setup_wizard(
             skip_existing=skip_existing,
             input_func=input_func,
             output_func=output_func,
+            executable=executable,
         )
     except (HookError, OpenAIAccountAuthError, ProjectConfigError) as error:
         output_func("OpenPandora could not finish setup.")
