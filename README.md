@@ -14,6 +14,8 @@ The installer downloads the latest `openpandora.pyz`, installs the
 `openpandora` command to `~/.local/bin`, starts setup, and installs
 computer-wide Git wake hooks.
 
+Check the install with `openpandora --version`.
+
 If the command is not found after install, add this to your shell:
 
 ```bash
