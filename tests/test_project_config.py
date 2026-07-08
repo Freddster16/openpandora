@@ -1,4 +1,5 @@
 import json
+import stat
 
 import pytest
 
@@ -49,6 +50,8 @@ def test_load_project_config_uses_global_provider_defaults(tmp_path):
     assert config.reasoning == "high"
     assert config.auto_create_pr is True
     assert global_config_path().exists()
+    assert stat.S_IMODE(global_config_path().parent.stat().st_mode) == 0o700
+    assert stat.S_IMODE(global_config_path().stat().st_mode) == 0o600
 
 
 def test_load_project_config_prefers_project_settings_over_global(tmp_path):

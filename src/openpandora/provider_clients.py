@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from openpandora.file_context import redact_sensitive_text
 from openpandora.review import ReviewRequest
 
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
@@ -387,7 +388,7 @@ def build_provider_prompt(request: ReviewRequest) -> str:
                     part.strip() for part in (result.stdout, result.stderr) if part
                 )
                 if output:
-                    lines.append(f"  Output: {output[:1000]}")
+                    lines.append(f"  Output: {redact_sensitive_text(output)[:1000]}")
     else:
         lines.append("- Not run")
 
@@ -445,7 +446,7 @@ def build_provider_fix_prompt(request: ReviewRequest) -> str:
                 part.strip() for part in (result.stdout, result.stderr) if part
             )
             if output:
-                lines.append(f"  Output: {output[:2000]}")
+                lines.append(f"  Output: {redact_sensitive_text(output)[:2000]}")
     else:
         lines.append("- None")
 

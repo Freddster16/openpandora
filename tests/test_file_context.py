@@ -22,5 +22,15 @@ def test_collect_file_context_redacts_sensitive_lines(tmp_path):
     assert contexts[0].content == "[redacted sensitive-looking line]\nprint('safe')"
 
 
+def test_collect_file_context_redacts_token_shapes_without_secret_words(tmp_path):
+    source_path = tmp_path / "config.py"
+    token = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
+    source_path.write_text(f"value = '{token}'\nprint('safe')\n")
+
+    contexts = collect_file_context(("config.py",), tmp_path)
+
+    assert contexts[0].content == "[redacted sensitive-looking line]\nprint('safe')"
+
+
 def test_collect_file_context_skips_missing_files(tmp_path):
     assert collect_file_context(("missing.py",), tmp_path) == ()

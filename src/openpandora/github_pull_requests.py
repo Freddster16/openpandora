@@ -15,9 +15,10 @@ from typing import Any
 
 GITHUB_API_VERSION = "2022-11-28"
 GITHUB_API_URL = "https://api.github.com"
+GITHUB_NAME = r"[A-Za-z0-9][A-Za-z0-9_.-]*"
 GITHUB_REMOTE_PATTERN = re.compile(
     r"(?:git@github\.com:|https://github\.com/|ssh://git@github\.com/)"
-    r"(?P<owner>[^/]+)/(?P<repo>[^/.]+)(?:\.git)?/?$"
+    rf"(?P<owner>{GITHUB_NAME})/(?P<repo>{GITHUB_NAME})/?$"
 )
 
 
@@ -75,7 +76,10 @@ def parse_github_remote(remote_url: str) -> GitHubRepo:
         raise GitHubPullRequestError(
             "OpenPandora only knows how to create PRs for GitHub remotes."
         )
-    return GitHubRepo(owner=match.group("owner"), name=match.group("repo"))
+    repo_name = match.group("repo")
+    if repo_name.endswith(".git"):
+        repo_name = repo_name.removesuffix(".git")
+    return GitHubRepo(owner=match.group("owner"), name=repo_name)
 
 
 def build_pull_request_plan(

@@ -27,6 +27,10 @@ from openpandora.github_pull_requests import (
             "ssh://git@github.com/Freddster16/openpandora.git",
             GitHubRepo("Freddster16", "openpandora"),
         ),
+        (
+            "https://github.com/Freddster16/openpandora.tool.git",
+            GitHubRepo("Freddster16", "openpandora.tool"),
+        ),
     ],
 )
 def test_parse_github_remote_accepts_common_formats(remote_url, repo):
@@ -36,6 +40,11 @@ def test_parse_github_remote_accepts_common_formats(remote_url, repo):
 def test_parse_github_remote_rejects_non_github_remote():
     with pytest.raises(GitHubPullRequestError, match="GitHub remotes"):
         parse_github_remote("git@example.com:owner/repo.git")
+
+
+def test_parse_github_remote_rejects_api_path_characters():
+    with pytest.raises(GitHubPullRequestError, match="GitHub remotes"):
+        parse_github_remote("https://github.com/owner/repo?bad=true.git")
 
 
 def test_build_pull_request_plan_requires_title():

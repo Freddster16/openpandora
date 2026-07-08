@@ -1,4 +1,5 @@
 import os
+import stat
 import subprocess
 
 import pytest
@@ -30,6 +31,8 @@ def test_install_git_hooks_writes_managed_wake_hooks(tmp_path):
     assert "wake --event push --create-pr" in result.pre_push_hook.read_text()
     assert os.access(result.post_commit_hook, os.X_OK)
     assert os.access(result.pre_push_hook, os.X_OK)
+    assert stat.S_IMODE(result.post_commit_hook.stat().st_mode) == 0o700
+    assert stat.S_IMODE(result.pre_push_hook.stat().st_mode) == 0o700
 
 
 def test_install_git_hooks_refuses_to_overwrite_user_hooks(tmp_path):
@@ -38,6 +41,18 @@ def test_install_git_hooks_refuses_to_overwrite_user_hooks(tmp_path):
     hook_path.write_text("#!/bin/sh\necho user hook\n")
 
     with pytest.raises(HookError, match="not created by OpenPandora"):
+        install_git_hooks(tmp_path)
+
+
+def test_install_git_hooks_refuses_to_overwrite_symlink(tmp_path):
+    _init_git_repo(tmp_path)
+    target_path = tmp_path / "target-hook"
+    target_path.write_text("# OpenPandora managed hook\n")
+    hook_path = tmp_path / ".git" / "hooks" / "post-commit"
+    hook_path.unlink(missing_ok=True)
+    hook_path.symlink_to(target_path)
+
+    with pytest.raises(HookError, match="symlink"):
         install_git_hooks(tmp_path)
 
 
@@ -63,6 +78,9 @@ def test_install_global_git_hooks_writes_computer_wide_hooks(tmp_path):
     assert 'wake --event "$event"' in result.pre_push_hook.read_text()
     assert os.access(result.post_commit_hook, os.X_OK)
     assert os.access(result.pre_push_hook, os.X_OK)
+    assert stat.S_IMODE(result.hooks_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE(result.post_commit_hook.stat().st_mode) == 0o700
+    assert stat.S_IMODE(result.pre_push_hook.stat().st_mode) == 0o700
 
 
 def test_install_global_git_hooks_chains_previous_global_hooks_path(tmp_path):

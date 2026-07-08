@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+umask 077
 
 repo="${OPENPANDORA_REPO:-Freddster16/openpandora}"
 install_dir="${OPENPANDORA_INSTALL_DIR:-$HOME/.local/bin}"
@@ -7,7 +8,28 @@ app_dir="${OPENPANDORA_APP_DIR:-$HOME/.local/share/openpandora}"
 download_url="${OPENPANDORA_URL:-https://github.com/$repo/releases/latest/download/openpandora.pyz}"
 app_file="$app_dir/openpandora.pyz"
 target="$install_dir/openpandora"
-temp_file="$app_file.tmp"
+temp_file=""
+
+cleanup() {
+  if [ -n "$temp_file" ] && [ -f "$temp_file" ]; then
+    rm -f "$temp_file"
+  fi
+}
+trap cleanup EXIT HUP INT TERM
+
+validate_download_url() {
+  case "$download_url" in
+    https://*) return 0 ;;
+    *)
+      if [ "${OPENPANDORA_ALLOW_INSECURE_URL:-}" = "1" ]; then
+        return 0
+      fi
+      echo "OpenPandora installer downloads must use HTTPS." >&2
+      echo "Set OPENPANDORA_ALLOW_INSECURE_URL=1 only for local testing." >&2
+      exit 1
+      ;;
+  esac
+}
 
 check_python() {
   "$1" - <<'PY' >/dev/null 2>&1
@@ -38,13 +60,22 @@ find_python() {
   return 1
 }
 
+verify_zipapp() {
+  "$python_cmd" -m zipfile -t "$temp_file" >/dev/null 2>&1 || {
+    echo "Downloaded OpenPandora package is not a valid Python zipapp." >&2
+    exit 1
+  }
+}
+
 python_cmd="$(find_python)" || {
   echo "OpenPandora needs Python 3.11 or newer." >&2
   echo "Set OPENPANDORA_PYTHON to a compatible Python if needed." >&2
   exit 1
 }
 
+validate_download_url
 mkdir -p "$install_dir" "$app_dir"
+temp_file="$(mktemp "$app_dir/openpandora.pyz.XXXXXX")"
 
 if command -v curl >/dev/null 2>&1; then
   curl -fsSL "$download_url" -o "$temp_file"
@@ -55,14 +86,16 @@ else
   exit 1
 fi
 
+verify_zipapp
 mv "$temp_file" "$app_file"
+temp_file=""
 
 cat > "$target" <<EOF
 #!/bin/sh
 export OPENPANDORA_HOOK_COMMAND="$target"
 exec "$python_cmd" "$app_file" "\$@"
 EOF
-chmod +x "$target"
+chmod 700 "$target"
 
 echo "OpenPandora installed to $target"
 if [ "${OPENPANDORA_SKIP_SETUP:-}" != "1" ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then

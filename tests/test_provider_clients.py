@@ -455,7 +455,15 @@ def test_build_provider_prompt_uses_evidence_without_raw_diff_lines():
                 suggestion="Load it from an environment variable.",
             ),
         ),
-        command_results=(CommandResult("Tests", "python -m pytest", 1, "", "failed"),),
+        command_results=(
+            CommandResult(
+                "Tests",
+                "python -m pytest",
+                1,
+                f"OPENAI_API_KEY={secret_value}",
+                "failed",
+            ),
+        ),
     )
 
     prompt = build_provider_prompt(request)
@@ -465,6 +473,7 @@ def test_build_provider_prompt_uses_evidence_without_raw_diff_lines():
     assert "Requested model: gpt-5" in prompt
     assert "Reasoning level: high" in prompt
     assert "failed (1)" in prompt
+    assert "[redacted sensitive-looking line]" in prompt
     assert secret_value not in prompt
 
 
@@ -488,6 +497,7 @@ def test_build_provider_prompt_includes_redacted_file_context():
 
 
 def test_build_provider_fix_prompt_requests_unified_diff():
+    secret_value = "ghp_" + "a" * 32
     request = ReviewRequest(
         provider="openai",
         context=RepoContext(
@@ -504,7 +514,15 @@ def test_build_provider_fix_prompt_requests_unified_diff():
             ),
         ),
         file_context=(FileContext("src/demo.py", "print('hello')"),),
-        command_results=(CommandResult("Tests", "python -m pytest", 1, "", "failed"),),
+        command_results=(
+            CommandResult(
+                "Tests",
+                "python -m pytest",
+                1,
+                "",
+                f"token={secret_value}",
+            ),
+        ),
     )
 
     prompt = build_provider_fix_prompt(request)
@@ -515,6 +533,8 @@ def test_build_provider_fix_prompt_requests_unified_diff():
     assert "print('hello')" in prompt
     assert "Add tests/test_demo.py." in prompt
     assert "Failed commands:" in prompt
+    assert "[redacted sensitive-looking line]" in prompt
+    assert secret_value not in prompt
 
 
 class FakeResponse:

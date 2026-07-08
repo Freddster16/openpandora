@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import os
 import shlex
-import stat
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 HOOK_MARKER = "# OpenPandora managed hook"
 CONFIG_HOME_ENV_VAR = "OPENPANDORA_CONFIG_HOME"
 HOOK_COMMAND_ENV_VAR = "OPENPANDORA_HOOK_COMMAND"
+PRIVATE_DIR_MODE = 0o700
+PRIVATE_HOOK_MODE = 0o700
 
 
 class HookError(RuntimeError):
@@ -75,7 +77,7 @@ def install_global_git_hooks(
 ) -> GlobalHookInstallResult:
     """Install one global Git hooks path so every repo can wake OpenPandora."""
     resolved_hooks_dir = Path(hooks_dir) if hooks_dir else _default_global_hooks_dir()
-    resolved_hooks_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_private_directory(resolved_hooks_dir)
 
     current_hooks_path = _current_global_hooks_path()
     previous_hooks_path = (
@@ -126,6 +128,8 @@ def _git_hooks_dir(repo_path: Path) -> Path:
 
 
 def _write_managed_hook(path: Path, content: str) -> None:
+    if path.is_symlink():
+        raise HookError(f"{path} is a symlink and will not be overwritten.")
     if path.exists():
         existing = path.read_text()
         if HOOK_MARKER not in existing:
@@ -133,9 +137,27 @@ def _write_managed_hook(path: Path, content: str) -> None:
                 f"{path} already exists and was not created by OpenPandora."
             )
 
-    path.write_text(content)
-    current_mode = path.stat().st_mode
-    path.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            delete=False,
+        ) as temp_file:
+            temp_path = Path(temp_file.name)
+            temp_file.write(content)
+        temp_path.chmod(PRIVATE_HOOK_MODE)
+        temp_path.replace(path)
+    finally:
+        if temp_path and temp_path.exists():
+            temp_path.unlink()
+
+
+def _ensure_private_directory(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    path.chmod(PRIVATE_DIR_MODE)
 
 
 def _hook_script(executable: str, event: str, create_pr: bool) -> str:

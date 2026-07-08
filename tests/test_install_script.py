@@ -22,6 +22,12 @@ def test_install_script_downloads_latest_release_asset():
     assert "curl" in script
     assert "wget" in script
     assert "OPENPANDORA_SKIP_SETUP" in script
+    assert "umask 077" in script
+    assert "validate_download_url" in script
+    assert "OPENPANDORA_ALLOW_INSECURE_URL" in script
+    assert "mktemp" in script
+    assert "trap cleanup EXIT HUP INT TERM" in script
+    assert "-m zipfile -t" in script
     assert 'export OPENPANDORA_HOOK_COMMAND="$target"' in script
     assert "/dev/tty" in script
     assert (
@@ -31,3 +37,4 @@ def test_install_script_downloads_latest_release_asset():
     assert '"$target" setup --global --if-needed' in script
     assert '"$target" setup --global --if-needed < /dev/tty' in script
     assert 'exec "$python_cmd" "$app_file" "\\$@"' in script
+    assert 'chmod 700 "$target"' in script

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,8 @@ REASONING_ENV_VAR = "OPENPANDORA_REASONING"
 DEFAULT_BASE_REF = "main"
 DEFAULT_TEST_COMMAND = "python -m pytest"
 DEFAULT_LINT_COMMAND = "ruff check ."
+PRIVATE_DIR_MODE = 0o700
+PRIVATE_CONFIG_MODE = 0o600
 
 
 @dataclass(frozen=True)
@@ -114,9 +117,9 @@ def global_config_path() -> Path:
 def write_global_config(config: ProjectConfig) -> Path:
     """Save per-user OpenPandora settings without storing secret values."""
     config_path = global_config_path()
-    config_path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_private_directory(config_path.parent)
     payload = _to_json(config, include_project=False)
-    config_path.write_text(json.dumps(payload, indent=2) + "\n")
+    _write_private_json(config_path, payload)
     return config_path
 
 
@@ -245,6 +248,29 @@ def _read_config_data(config_path: Path) -> dict[str, Any]:
         raise ProjectConfigError(f"{config_path} must contain a JSON object.")
 
     return data
+
+
+def _ensure_private_directory(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    path.chmod(PRIVATE_DIR_MODE)
+
+
+def _write_private_json(config_path: Path, payload: dict[str, Any]) -> None:
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            dir=config_path.parent,
+            prefix=f".{config_path.name}.",
+            delete=False,
+        ) as temp_file:
+            temp_path = Path(temp_file.name)
+            temp_file.write(json.dumps(payload, indent=2) + "\n")
+        temp_path.chmod(PRIVATE_CONFIG_MODE)
+        temp_path.replace(config_path)
+    finally:
+        if temp_path and temp_path.exists():
+            temp_path.unlink()
 
 
 def _object_or_empty(value: object, config_path: Path, name: str) -> dict[str, Any]:
