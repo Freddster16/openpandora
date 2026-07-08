@@ -27,7 +27,7 @@ def record_findings(
     findings: tuple[Finding, ...],
     repo_path: str | Path = ".",
 ) -> HistoryWrite | None:
-    """Record findings without turning them into rules automatically."""
+    """Record findings so local learning can notice repeated patterns."""
     if not findings:
         return None
 

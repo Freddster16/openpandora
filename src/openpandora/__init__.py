@@ -1,3 +1,3 @@
 """OpenPandora gives beginner developers gentle QA feedback on commits."""
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"

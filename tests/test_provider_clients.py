@@ -9,6 +9,7 @@ from openpandora.command_runner import CommandResult
 from openpandora.file_context import FileContext
 from openpandora.findings import Finding, Severity
 from openpandora.git_context import RepoContext
+from openpandora.learned_rules import LearnedRule
 from openpandora.provider_clients import (
     ANTHROPIC_MESSAGES_URL,
     OPENAI_RESPONSES_URL,
@@ -120,6 +121,52 @@ def test_request_provider_fix_explains_unconnected_provider():
 def test_request_openai_review_requires_api_key():
     with pytest.raises(ProviderReviewError, match="OPENAI_API_KEY"):
         request_openai_review("Review this.", environment={})
+
+
+def test_build_provider_prompt_includes_learned_rules():
+    request = ReviewRequest(
+        provider="openai",
+        context=RepoContext(
+            branch_name="feature/demo",
+            current_commit="abc123def4567890",
+            changed_files=("README.md",),
+        ),
+        findings=(),
+        learned_rules=(
+            LearnedRule(
+                title="Keep README minimal",
+                message="Keep README changes short and focused.",
+            ),
+        ),
+    )
+
+    prompt = build_provider_prompt(request)
+
+    assert "Learned user/project rules:" in prompt
+    assert "Keep README minimal: Keep README changes short and focused." in prompt
+
+
+def test_build_provider_fix_prompt_includes_learned_rules():
+    request = ReviewRequest(
+        provider="openai",
+        context=RepoContext(
+            branch_name="feature/demo",
+            current_commit="abc123def4567890",
+            changed_files=("README.md",),
+        ),
+        findings=(),
+        learned_rules=(
+            LearnedRule(
+                title="Keep README minimal",
+                message="Keep README changes short and focused.",
+            ),
+        ),
+    )
+
+    prompt = build_provider_fix_prompt(request)
+
+    assert "Learned user/project rules:" in prompt
+    assert "Keep README minimal: Keep README changes short and focused." in prompt
 
 
 def test_request_openai_account_review_uses_codex_without_api_key():

@@ -364,6 +364,7 @@ def build_provider_prompt(request: ReviewRequest) -> str:
         lines.append("- None")
 
     _append_file_context(lines, request)
+    _append_learned_rules(lines, request)
 
     lines.extend(["", "OpenPandora findings:"])
     if request.findings:
@@ -418,6 +419,8 @@ def build_provider_fix_prompt(request: ReviewRequest) -> str:
     else:
         lines.append("- None")
 
+    _append_learned_rules(lines, request)
+
     lines.extend(["", "Findings to fix:"])
     if request.findings:
         for finding in request.findings:
@@ -461,6 +464,16 @@ def _append_file_context(lines: list[str], request: ReviewRequest) -> None:
         lines.append("```")
         lines.append(file_context.content)
         lines.append("```")
+
+
+def _append_learned_rules(lines: list[str], request: ReviewRequest) -> None:
+    lines.extend(["", "Learned user/project rules:"])
+    if not request.learned_rules:
+        lines.append("- None")
+        return
+
+    for rule in request.learned_rules:
+        lines.append(f"- [{rule.severity}] {rule.title}: {rule.message}")
 
 
 def _extract_openai_text(data: Mapping[str, Any]) -> str:

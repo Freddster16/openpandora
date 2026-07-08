@@ -97,7 +97,7 @@ def test_check_command_shows_loaded_learned_rules(monkeypatch, capsys):
 
     output = capsys.readouterr().out
     assert "Loaded learned rules: 1" in output
-    assert "Learned rules are visible but not auto-applied yet." in output
+    assert "Learning is active for reviews and provider prompts." in output
     assert "[warning] Prefer focused tests" in output
 
 
@@ -171,7 +171,54 @@ def test_check_command_reports_findings(monkeypatch, capsys):
     assert "[error] Add a test (src/openpandora/cli.py:10)" in output
     assert "Suggestion: Add a pytest case for the new behavior." in output
     assert "Recorded this finding history" in output
-    assert "did not add or enforce any learned rule automatically" in output
+
+
+def test_check_command_reports_newly_learned_rules(monkeypatch, capsys):
+    context = RepoContext(
+        branch_name="feature/demo",
+        current_commit="abc123def4567890",
+        changed_files=("src/openpandora/cli.py",),
+    )
+    finding = Finding(
+        title="Add a test",
+        message="This change should include a focused test.",
+        severity=Severity.WARNING,
+        file_path="src/openpandora/cli.py",
+    )
+    learned_rule = LearnedRule(
+        title="Learned: Add a test",
+        message="Add a pytest case.",
+    )
+    monkeypatch.setattr(
+        cli,
+        "collect_repo_context",
+        lambda repo_path=".", since_ref=None, include_worktree=False: context,
+    )
+    monkeypatch.setattr(
+        cli,
+        "load_learned_rules",
+        lambda repo_path=".": (learned_rule,),
+    )
+    monkeypatch.setattr(
+        cli, "run_local_checks", lambda repo_context, repo_path=".": (finding,)
+    )
+    monkeypatch.setattr(
+        cli,
+        "_record_findings_and_learn",
+        lambda repo_context, findings, repo_path=".": (
+            SimpleNamespace(path=".openpandora/history.jsonl"),
+            SimpleNamespace(
+                path=".openpandora/rules.json",
+                added_rules=(learned_rule,),
+            ),
+        ),
+    )
+
+    assert main(["check"]) == 1
+
+    output = capsys.readouterr().out
+    assert "Loaded learned rules: 1" in output
+    assert "Learned 1 new rule(s)" in output
 
 
 def test_check_command_can_print_json_findings(monkeypatch, capsys):
@@ -386,6 +433,11 @@ def test_wake_reports_nothing_found(monkeypatch, capsys):
         "_build_review_request",
         lambda repo_path=".", since_ref=None: request,
     )
+    monkeypatch.setattr(
+        cli,
+        "_record_findings_and_learn",
+        lambda repo_context, findings, repo_path=".": (None, None),
+    )
 
     assert cli.run_wake(event="manual", since_ref="main") == 0
 
@@ -414,6 +466,11 @@ def test_wake_can_create_fix_pr_when_issue_is_found(monkeypatch, capsys):
         cli,
         "_build_review_request",
         lambda repo_path=".", since_ref=None: request,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_record_findings_and_learn",
+        lambda repo_context, findings, repo_path=".": (None, None),
     )
 
     def fake_run_fix_pr(repo_path=".", since_ref=None, create=False):
@@ -461,6 +518,67 @@ def test_providers_select_command_requires_provider(capsys):
 
     output = capsys.readouterr().out
     assert "Choose a provider" in output
+
+
+def test_learn_command_saves_user_preference(tmp_path, capsys):
+    assert (
+        cli.run_learn(
+            "Keep README changes short and focused.",
+            repo_path=tmp_path,
+            title="Keep README minimal",
+        )
+        == 0
+    )
+
+    output = capsys.readouterr().out
+    assert "Learned rule saved" in output
+    assert "Keep README minimal" in output
+    assert (tmp_path / ".openpandora" / "rules.json").exists()
+
+
+def test_learn_command_reports_duplicate_preference(tmp_path, capsys):
+    kwargs = {
+        "rule_text": "Keep README changes short and focused.",
+        "repo_path": tmp_path,
+        "title": "Keep README minimal",
+    }
+
+    assert cli.run_learn(**kwargs) == 0
+    assert cli.run_learn(**kwargs) == 0
+
+    output = capsys.readouterr().out
+    assert "already knows" in output
+
+
+def test_learn_command_parses_cli_arguments(monkeypatch):
+    captured = {}
+
+    def fake_run_learn(rule_text, **kwargs):
+        captured["rule_text"] = rule_text
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(cli, "run_learn", fake_run_learn)
+
+    assert (
+        main(
+            [
+                "learn",
+                "Keep",
+                "README",
+                "minimal",
+                "--title",
+                "Docs style",
+                "--severity",
+                "warning",
+            ]
+        )
+        == 0
+    )
+
+    assert captured["rule_text"] == "Keep README minimal"
+    assert captured["title"] == "Docs style"
+    assert captured["severity"] == "warning"
 
 
 @pytest.mark.parametrize(

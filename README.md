@@ -58,6 +58,15 @@ OpenAI account auth uses your saved Codex ChatGPT login.
 
 To arm another repo later, run `openpandora setup` from inside that repo.
 
+## Learning
+
+OpenPandora keeps local history and learned rules in `.openpandora/`. Repeated
+findings become editable rules, and you can teach preferences directly:
+
+```bash
+openpandora learn "Keep README changes short and focused."
+```
+
 ## Useful Commands
 
 ```bash
@@ -66,6 +75,7 @@ openpandora test
 openpandora review --since main
 openpandora improve --dry-run --since main
 openpandora fix-pr --since main --create
+openpandora learn "Prefer small, focused changes."
 ```
 
 ## Develop

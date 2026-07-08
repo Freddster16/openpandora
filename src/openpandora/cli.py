@@ -13,7 +13,7 @@ from openpandora import __version__
 from openpandora.checks import run_local_checks
 from openpandora.command_runner import CommandResult, run_project_commands
 from openpandora.file_context import collect_file_context
-from openpandora.findings import Finding
+from openpandora.findings import Finding, Severity
 from openpandora.git_changes import (
     GitChangeError,
     commit_all_changes,
@@ -34,7 +34,14 @@ from openpandora.github_pull_requests import (
 from openpandora.history import load_history, record_findings, record_fix
 from openpandora.hooks import HookError, install_git_hooks
 from openpandora.improve import build_improve_plan
-from openpandora.learned_rules import LearnedRule, LearnedRulesError, load_learned_rules
+from openpandora.learned_rules import (
+    LearnedRule,
+    LearnedRulesError,
+    LearnedRulesWrite,
+    add_learned_rule,
+    learn_from_history,
+    load_learned_rules,
+)
 from openpandora.patches import PatchError, apply_unified_diff, extract_unified_diff
 from openpandora.project_config import ProjectConfigError, load_project_config
 from openpandora.project_init import initialize_project
@@ -70,9 +77,33 @@ def run_check(
         return 1
 
     findings = run_local_checks(context, repo_path)
-    history_write = record_findings(context, findings, repo_path)
+    try:
+        history_write, learning_write = _record_findings_and_learn(
+            context,
+            findings,
+            repo_path,
+        )
+        if learning_write:
+            learned_rules = load_learned_rules(repo_path)
+    except LearnedRulesError as error:
+        if json_output:
+            print(json.dumps(_error_payload(error), indent=2))
+            return 1
+        _print_check_error(error)
+        return 1
+
     if json_output:
-        print(json.dumps(_success_payload(context, learned_rules, findings), indent=2))
+        print(
+            json.dumps(
+                _success_payload(
+                    context,
+                    learned_rules,
+                    findings,
+                    learning_write,
+                ),
+                indent=2,
+            )
+        )
         return 1 if findings else 0
 
     print("OpenPandora check")
@@ -83,7 +114,7 @@ def run_check(
     print(f"Changed files: {len(context.changed_files)}")
     if learned_rules:
         print(f"Loaded learned rules: {len(learned_rules)}")
-        print("Learned rules are visible but not auto-applied yet.")
+        print("Learning is active for reviews and provider prompts.")
         for rule in learned_rules:
             print(f"- [{rule.severity}] {rule.title}")
 
@@ -101,7 +132,11 @@ def run_check(
 
     if history_write:
         print(f"Recorded this finding history in {history_write.path}.")
-        print("OpenPandora did not add or enforce any learned rule automatically.")
+    if learning_write:
+        print(
+            f"Learned {len(learning_write.added_rules)} new rule(s) in "
+            f"{learning_write.path}."
+        )
 
     return 1
 
@@ -119,7 +154,12 @@ def _print_check_error(error: Exception) -> None:
     print(message)
 
 
-def _success_payload(context, learned_rules, findings) -> dict:
+def _success_payload(
+    context,
+    learned_rules,
+    findings,
+    learning_write: LearnedRulesWrite | None = None,
+) -> dict:
     status = "failed" if findings else "passed"
     return {
         "status": status,
@@ -128,6 +168,11 @@ def _success_payload(context, learned_rules, findings) -> dict:
         "base_ref": context.base_ref,
         "changed_files": list(context.changed_files),
         "learned_rules": [_rule_payload(rule) for rule in learned_rules],
+        "learned_rule_updates": (
+            [_rule_payload(rule) for rule in learning_write.added_rules]
+            if learning_write
+            else []
+        ),
         "findings": [_finding_payload(finding) for finding in findings],
     }
 
@@ -225,6 +270,36 @@ def run_setup(
     return 0 if result else 1
 
 
+def run_learn(
+    rule_text: str,
+    repo_path: str | Path = ".",
+    *,
+    title: str | None = None,
+    severity: str = Severity.INFO.value,
+) -> int:
+    """Remember a local user preference or project constraint."""
+    try:
+        result = add_learned_rule(
+            repo_path,
+            message=rule_text,
+            title=title,
+            severity=Severity(severity),
+        )
+    except (LearnedRulesError, ValueError) as error:
+        _print_check_error(error)
+        return 1
+
+    if result is None:
+        print("OpenPandora already knows that rule.")
+        return 0
+
+    print(f"Learned rule saved to {result.path}.")
+    for rule in result.added_rules:
+        print(f"- [{rule.severity}] {rule.title}")
+    print("OpenPandora will include it in future checks, reviews, and fixes.")
+    return 0
+
+
 def run_sleep(repo_path: str | Path = ".", create_pr: bool = False) -> int:
     """Install Git hooks that wake OpenPandora only for this repository."""
     try:
@@ -269,9 +344,24 @@ def run_wake(
         return 1
 
     review_result = build_review(request)
+    try:
+        _history_write, learning_write = _record_findings_and_learn(
+            request.context,
+            request.findings,
+            repo_path,
+        )
+    except LearnedRulesError as error:
+        _print_check_error(error)
+        return 1
+
     print(f"OpenPandora woke up for {event}.")
     if compare_ref:
         print(f"Compared with: {compare_ref}")
+    if learning_write:
+        print(
+            f"Learned {len(learning_write.added_rules)} new rule(s) in "
+            f"{learning_write.path}."
+        )
 
     if not review_result.has_issues:
         print("OpenPandora wake: nothing found.")
@@ -394,6 +484,17 @@ def run_history(repo_path: str | Path = ".") -> int:
         if event_type == "fix" and event.get("pull_request_url"):
             print(f"  PR: {event['pull_request_url']}")
     return 0
+
+
+def _record_findings_and_learn(
+    context,
+    findings: tuple[Finding, ...],
+    repo_path: str | Path,
+):
+    history_write = record_findings(context, findings, repo_path)
+    if history_write is None:
+        return None, None
+    return history_write, learn_from_history(repo_path)
 
 
 def run_test(repo_path: str | Path = ".") -> int:
@@ -887,6 +988,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     history_parser.set_defaults(command_handler=run_history)
 
+    learn_parser = subparsers.add_parser(
+        "learn",
+        help="Remember a local user preference for future reviews.",
+    )
+    learn_parser.add_argument(
+        "rule",
+        nargs="+",
+        help="Preference or constraint to remember.",
+    )
+    learn_parser.add_argument(
+        "--title",
+        help="Short name for the learned rule.",
+    )
+    learn_parser.add_argument(
+        "--severity",
+        choices=("info", "warning", "error"),
+        default="info",
+        help="How strongly OpenPandora should treat this rule.",
+    )
+    learn_parser.set_defaults(command_handler=run_learn)
+
     test_parser = subparsers.add_parser(
         "test",
         help="Run this project's configured test and lint commands.",
@@ -978,6 +1100,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return args.command_handler(since_ref=args.since)
     if args.command == "pr-create":
         return args.command_handler(since_ref=args.since, create=args.create)
+    if args.command == "learn":
+        return args.command_handler(
+            " ".join(args.rule),
+            title=args.title,
+            severity=args.severity,
+        )
     if args.command == "review":
         return args.command_handler(since_ref=args.since)
     if args.command == "improve":

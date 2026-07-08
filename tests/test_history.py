@@ -30,6 +30,7 @@ def test_record_findings_appends_readable_history(tmp_path):
     assert events[0]["base_ref"] == "main"
     assert events[0]["findings"][0]["title"] == "Add a focused test"
     assert events[0]["findings"][0]["severity"] == "warning"
+    assert events[0]["findings"][0]["suggestion"] == "Add tests/test_demo.py."
 
 
 def test_record_findings_skips_empty_findings(tmp_path):
