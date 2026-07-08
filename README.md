@@ -54,7 +54,7 @@ openpandora setup
 
 Setup installs one global Git hooks path for this computer. OpenPandora does not
 run in the background; it stays quiet until a commit or push from any repo wakes
-it. If it finds a safe fix, it creates a branch and GitHub PR. If it finds
+it. If it finds a safe fix, it creates a branch and a ready GitHub PR. If it finds
 nothing, it prints:
 
 ```text

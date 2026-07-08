@@ -44,7 +44,7 @@ class PullRequestPlan:
     body: str
     head: str
     base: str
-    draft: bool = True
+    draft: bool = False
 
 
 @dataclass(frozen=True)
@@ -90,7 +90,7 @@ def build_pull_request_plan(
     body: str,
     head: str,
     base: str,
-    draft: bool = True,
+    draft: bool = False,
 ) -> PullRequestPlan:
     """Prepare PR fields before making a network request."""
     if not title.strip():
